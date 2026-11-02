@@ -36,30 +36,36 @@ Les modèles (templates) sont ignorés par défaut.
 
 ## Installation
 
-Sur chaque nœud Proxmox (en root) :
+Dans le **shell du nœud Proxmox** (en root), comme les scripts de tteck :
 
 ```sh
-git clone https://github.com/sudoPierre/freeprox.git
-cd freeprox
-./install.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/sudoPierre/freeprox/main/install.sh)"
 ```
 
-### Associer freeprox à la Freebox
+Le script, entièrement guidé (fenêtres whiptail) :
+
+1. vérifie qu'il tourne sur Proxmox VE et installe les dépendances manquantes ;
+2. propose les réglages **par défaut** ou **avancés** (adresse de la Freebox, ponts réseau
+   reliés au LAN, pool d'IP, libération des baux à la suppression) ;
+3. installe freeprox dans `/opt/freeprox` et le service systemd ;
+4. **associe freeprox à la Freebox** : validez la demande sur l'écran LCD de la box ;
+5. vérifie le droit **« Modification des réglages de la Freebox »**, et explique comment
+   l'activer s'il manque (Freebox OS → *Paramètres de la Freebox* → *Gestion des accès* →
+   *Applications* → *Freeprox*) ;
+6. propose de réserver aussi les IP des VM/LXC déjà existants ;
+7. démarre le service.
+
+Relancer la même commande sur un nœud où freeprox est déjà installé ouvre un menu
+**Mettre à jour / Reconfigurer / Désinstaller**. Sans interface :
 
 ```sh
-freeprox register
+bash /opt/freeprox/install.sh --update
+bash /opt/freeprox/install.sh --uninstall [--purge]   # --purge : supprime aussi config et jeton
 ```
 
-Validez la demande sur l'écran LCD de la Freebox. Ensuite, **obligatoire** : dans
-Freebox OS → *Paramètres de la Freebox* → *Gestion des accès* → onglet *Applications*,
-éditez **Freeprox** et cochez **« Modification des réglages de la Freebox »**
-(nécessaire pour écrire les baux DHCP).
+Sur un cluster, lancez le script sur chaque nœud (chacun gère ses propres invités).
 
-```sh
-freeprox check                     # connexion, permission, config DHCP
-systemctl enable --now freeprox
-journalctl -u freeprox -f          # suivre l'activité
-```
+Suivre l'activité : `journalctl -u freeprox -f`
 
 ## Configuration
 
@@ -104,8 +110,7 @@ freeprox release 105 [...]     supprimer les baux créés pour un invité
   Freebox n'attribuera pas cette IP à un autre appareil.
 - Accès en HTTPS : `url = https://mafreebox.freebox.fr` avec `ca_file` pointant vers les
   certificats racine Freebox, ou `verify_tls = false`.
-- Désinstallation : `./uninstall.sh` (`--purge` pour supprimer aussi config et jeton).
-  Les baux existants restent sur la Freebox.
+- La désinstallation laisse les baux existants sur la Freebox.
 
 ## Développement
 
