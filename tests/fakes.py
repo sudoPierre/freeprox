@@ -1,4 +1,4 @@
-"""Faux serveur Freebox OS et faux /etc/pve pour les tests."""
+"""Fake Freebox OS server and fake /etc/pve tree for tests."""
 
 import hashlib
 import hmac

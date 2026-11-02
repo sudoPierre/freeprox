@@ -1,4 +1,4 @@
-"""Logique principale : détecter les nouveaux invités et leur réserver une IP sur la Freebox."""
+"""Core logic: detect new guests and reserve an IP for them on the Freebox."""
 
 import ipaddress
 import json
@@ -12,13 +12,13 @@ from .comment import render_comment
 
 log = logging.getLogger(__name__)
 
-# Un invité doit avoir disparu de .vmlist pendant ce nombre de passes avant d'être
-# considéré comme supprimé (protège contre une lecture transitoire incomplète de pmxcfs).
+# A guest must be missing from .vmlist for this many passes before it is considered
+# destroyed (guards against a transient incomplete read of pmxcfs).
 MISSING_PASSES_BEFORE_DESTROY = 3
 
 
 class State:
-    """Mémorise les cartes réseau déjà traitées : {vmid: {type, node, nics: {mac: {...}}}}."""
+    """Remembers already processed NICs: {vmid: {type, node, nics: {mac: {...}}}}."""
 
     def __init__(self, path):
         self.path = path
@@ -54,23 +54,23 @@ class Freeprox:
         self.pinger = pinger
         self.bridges = set(config.getlist("proxmox", "bridges"))
 
-    # -- sélection -------------------------------------------------------
+    # -- selection -------------------------------------------------------
 
     def eligible_nics(self, guest):
         return [nic for nic in guest.nics if not self.bridges or nic.bridge in self.bridges]
 
     def _ready(self, guest):
         if guest.lock:
-            log.debug("%s %d verrouillé (%s), on attend", guest.type, guest.vmid, guest.lock)
+            log.debug("%s %d locked (%s), waiting", guest.type, guest.vmid, guest.lock)
             return False
         if time.time() - guest.mtime < self.cfg.getint("daemon", "settle_seconds"):
             return False
         return True
 
-    # -- bail DHCP -------------------------------------------------------
+    # -- DHCP lease -----------------------------------------------------
 
     def ensure_lease(self, guest, nic):
-        """Crée (ou met à jour) le bail statique de la carte. Retourne (ip, créé_par_nous)."""
+        """Create (or update) the NIC's static lease. Returns (ip, created_by_us)."""
         statics = self.fbx.static_leases()
         existing = next((l for l in statics if l.get("mac", "").upper() == nic.mac), None)
         template = self.cfg.get("comment", "template")
@@ -80,17 +80,17 @@ class Freeprox:
             ip = existing["ip"]
             comment = render_comment(template, guest, nic, ip, max_len)
             if self.cfg.getbool("comment", "update_existing") and existing.get("comment") != comment:
-                log.info("%s %d/%s : bail existant %s -> %s, mise à jour du commentaire",
+                log.info("%s %d/%s: existing lease %s -> %s, updating comment",
                          guest.type, guest.vmid, nic.iface, nic.mac, ip)
                 if not self.dry_run:
                     self.fbx.update_static_lease(existing["id"], comment=comment)
             else:
-                log.info("%s %d/%s : bail existant %s -> %s", guest.type, guest.vmid, nic.iface, nic.mac, ip)
+                log.info("%s %d/%s: existing lease %s -> %s", guest.type, guest.vmid, nic.iface, nic.mac, ip)
             return ip, False
 
         ip = self._choose_ip(nic, statics)
         comment = render_comment(template, guest, nic, ip, max_len)
-        log.info("%s %d/%s : réservation %s -> %s « %s »%s", guest.type, guest.vmid, nic.iface,
+        log.info("%s %d/%s: reserving %s -> %s \"%s\"%s", guest.type, guest.vmid, nic.iface,
                  nic.mac, ip, comment, " (dry-run)" if self.dry_run else "")
         if not self.dry_run:
             self.fbx.add_static_lease(nic.mac, ip, comment)
@@ -102,19 +102,19 @@ class Freeprox:
         reserved = {l["ip"] for l in statics}
         dynamic = self.fbx.dynamic_leases()
 
-        # 1. IP statique déjà configurée dans l'invité (LXC ip=… / cloud-init).
+        # 1. Static IP already configured inside the guest (LXC ip=… / cloud-init).
         if self.cfg.getbool("dhcp", "use_guest_static_ip") and nic.static_ip:
             if _in_network(nic.static_ip, network) and nic.static_ip not in reserved:
                 return nic.static_ip
-            log.warning("IP statique %s de %s inutilisable (hors LAN %s ou déjà réservée)", nic.static_ip, nic.mac, network)
+            log.warning("Static IP %s of %s unusable (outside LAN %s or already reserved)", nic.static_ip, nic.mac, network)
 
-        # 2. IP actuellement attribuée par le DHCP à ce MAC : on la fige.
+        # 2. IP currently leased by DHCP to this MAC: pin it.
         if self.cfg.getbool("dhcp", "prefer_current_ip"):
             current = next((l["ip"] for l in dynamic if l.get("mac", "").upper() == nic.mac), None)
             if current and current not in reserved and _in_network(current, network):
                 return current
 
-        # 3. Première IP libre du pool.
+        # 3. First free IP in the pool.
         used = reserved | {l["ip"] for l in dynamic if l.get("mac", "").upper() != nic.mac}
         return pick_free_ip(
             dhcp, used,
@@ -125,7 +125,7 @@ class Freeprox:
             pinger=self.pinger,
         )
 
-    # -- traitement d'un invité -----------------------------------------
+    # -- guest processing -----------------------------------------------
 
     def process_guest(self, guest, force=False):
         if guest.is_template and self.cfg.getbool("proxmox", "skip_templates"):
@@ -137,8 +137,8 @@ class Freeprox:
                 continue
             try:
                 ip, created = self.ensure_lease(guest, nic)
-            except Exception as exc:  # on réessaiera à la prochaine passe
-                log.error("%s %d/%s : échec de la réservation : %s", guest.type, guest.vmid, nic.iface, exc)
+            except Exception as exc:  # retried on the next pass
+                log.error("%s %d/%s: reservation failed: %s", guest.type, guest.vmid, nic.iface, exc)
                 continue
             if self.dry_run:
                 continue
@@ -150,7 +150,7 @@ class Freeprox:
             }
 
     def release_guest(self, vmid):
-        """Supprime les baux créés par freeprox pour cet invité."""
+        """Delete the leases freeprox created for this guest."""
         entry = self.state.guests.get(str(vmid))
         if not entry:
             return 0
@@ -158,7 +158,7 @@ class Freeprox:
         for mac, info in entry.get("nics", {}).items():
             if not info.get("created"):
                 continue
-            log.info("Invité %s supprimé : libération du bail %s (%s)%s", vmid, mac, info.get("ip"),
+            log.info("Guest %s destroyed: releasing lease %s (%s)%s", vmid, mac, info.get("ip"),
                      " (dry-run)" if self.dry_run else "")
             if self.dry_run:
                 continue
@@ -166,13 +166,13 @@ class Freeprox:
                 self.fbx.delete_static_lease(mac)
                 removed += 1
             except Exception as exc:
-                log.error("Échec de la suppression du bail %s : %s", mac, exc)
+                log.error("Failed to delete lease %s: %s", mac, exc)
         return removed
 
     # -- passes ----------------------------------------------------------
 
     def initialize(self, guests):
-        """Premier démarrage : les invités déjà présents sont marqués comme connus, sans être traités."""
+        """First start: guests that already exist are marked as known without being processed."""
         if self.state.initialized:
             return
         if not self.cfg.getbool("proxmox", "process_existing"):
@@ -181,7 +181,7 @@ class Freeprox:
                 entry.update(type=guest.type, node=guest.node, missing=0)
                 for nic in self.eligible_nics(guest):
                     entry["nics"].setdefault(nic.mac, {"iface": nic.iface, "ip": None, "created": False})
-            log.info("Initialisation : %d invité(s) existant(s) ignoré(s) (voir 'freeprox sync --all')", len(guests))
+            log.info("Initialization: %d existing guest(s) skipped (see 'freeprox sync --all')", len(guests))
         self.state.initialized = True
 
     def run_once(self):
@@ -203,7 +203,7 @@ class Freeprox:
                 continue
             info = vmlist.get(int(vmid))
             if info is not None and info.get("node") != self.pve.node:
-                log.info("Invité %s migré vers %s : suivi transféré", vmid, info.get("node"))
+                log.info("Guest %s migrated to %s: tracking handed over", vmid, info.get("node"))
                 del self.state.guests[vmid]
                 continue
             entry = self.state.guests[vmid]
@@ -213,7 +213,7 @@ class Freeprox:
             if self.cfg.getbool("daemon", "remove_on_destroy"):
                 self.release_guest(vmid)
             else:
-                log.info("Invité %s supprimé (bail conservé, remove_on_destroy=false)", vmid)
+                log.info("Guest %s destroyed (lease kept, remove_on_destroy=false)", vmid)
             del self.state.guests[vmid]
 
         if not self.dry_run:
@@ -221,13 +221,13 @@ class Freeprox:
 
     def run_forever(self):
         interval = self.cfg.getint("daemon", "interval")
-        log.info("freeprox démarré sur le nœud %s (ponts : %s, intervalle %ds)",
-                 self.pve.node, ", ".join(sorted(self.bridges)) or "tous", interval)
+        log.info("freeprox started on node %s (bridges: %s, interval %ds)",
+                 self.pve.node, ", ".join(sorted(self.bridges)) or "all", interval)
         while True:
             try:
                 self.run_once()
             except Exception as exc:
-                log.error("Erreur pendant la passe : %s", exc, exc_info=log.isEnabledFor(logging.DEBUG))
+                log.error("Error during pass: %s", exc, exc_info=log.isEnabledFor(logging.DEBUG))
             time.sleep(interval)
 
 

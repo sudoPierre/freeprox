@@ -1,5 +1,5 @@
 [Unit]
-Description=Freeprox - réservation IP Freebox pour les VM/LXC Proxmox
+Description=Freeprox - Freebox IP reservation for Proxmox VMs/LXCs
 After=pve-cluster.service network-online.target
 Wants=network-online.target
 Requires=pve-cluster.service

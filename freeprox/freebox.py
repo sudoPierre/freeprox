@@ -1,4 +1,4 @@
-"""Client minimal de l'API Freebox OS (authentification + DHCP)."""
+"""Minimal Freebox OS API client (authentication + DHCP)."""
 
 import hashlib
 import hmac
@@ -10,7 +10,7 @@ import urllib.request
 
 log = logging.getLogger(__name__)
 
-# Codes d'erreur indiquant que la session doit être renouvelée.
+# Error codes meaning the session must be renewed.
 SESSION_ERRORS = {"auth_required", "invalid_session", "invalid_token"}
 
 
@@ -49,22 +49,22 @@ class FreeboxClient:
             with urllib.request.urlopen(req, timeout=self.timeout, context=self._ssl) as resp:
                 payload = resp.read()
         except urllib.error.HTTPError as exc:
-            # La Freebox renvoie un corps JSON explicatif même en 4xx.
+            # The Freebox returns an explanatory JSON body even on 4xx.
             payload = exc.read()
         except urllib.error.URLError as exc:
-            raise FreeboxError("Freebox injoignable (%s) : %s" % (self.url, exc.reason))
+            raise FreeboxError("Freebox unreachable (%s): %s" % (self.url, exc.reason))
         try:
             return json.loads(payload.decode() or "{}")
         except ValueError:
-            raise FreeboxError("Réponse invalide de la Freebox sur %s %s" % (method, url))
+            raise FreeboxError("Invalid response from the Freebox on %s %s" % (method, url))
 
     def discover(self):
         info = self._request("GET", self.url + "/api_version")
         if "api_version" not in info:
-            raise FreeboxError("Pas de Freebox détectée sur %s" % self.url)
+            raise FreeboxError("No Freebox found at %s" % self.url)
         major = str(info["api_version"]).split(".")[0]
         self._api = "%s%sv%s/" % (self.url, info.get("api_base_url", "/api/"), major)
-        log.debug("API Freebox : %s (%s)", self._api, info.get("device_name"))
+        log.debug("Freebox API: %s (%s)", self._api, info.get("device_name"))
         return info
 
     def call(self, method, path, body=None, auth=True, _retry=True):
@@ -81,13 +81,13 @@ class FreeboxClient:
             if auth and _retry and code in SESSION_ERRORS:
                 self._session = None
                 return self.call(method, path, body, auth, _retry=False)
-            raise FreeboxError(resp.get("msg") or code or "erreur inconnue", code)
+            raise FreeboxError(resp.get("msg") or code or "unknown error", code)
         return resp.get("result")
 
-    # -- authentification ------------------------------------------------
+    # -- authentication --------------------------------------------------
 
     def request_authorization(self, app_name, app_version, device_name):
-        """Demande un app_token ; l'utilisateur doit valider sur l'écran de la Freebox."""
+        """Request an app_token; the user must approve it on the Freebox display."""
         res = self.call("POST", "login/authorize/", {
             "app_id": self.app_id,
             "app_name": app_name,
@@ -101,7 +101,7 @@ class FreeboxClient:
 
     def login(self):
         if not self.app_token:
-            raise FreeboxError("Aucun app_token : lancez d'abord 'freeprox register'")
+            raise FreeboxError("No app_token: run 'freeprox register' first")
         challenge = self.call("GET", "login/", auth=False)["challenge"]
         password = hmac.new(self.app_token.encode(), challenge.encode(), hashlib.sha1).hexdigest()
         res = self.call("POST", "login/session/", {"app_id": self.app_id, "password": password}, auth=False)

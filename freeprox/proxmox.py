@@ -1,4 +1,4 @@
-"""Lecture des invités (VM QEMU et conteneurs LXC) depuis le système de fichiers /etc/pve."""
+"""Read guests (QEMU VMs and LXC containers) from the /etc/pve filesystem."""
 
 import json
 import os
@@ -18,15 +18,15 @@ CONF_DIRS = {"qemu": "qemu-server", "lxc": "lxc"}
 @dataclass
 class Nic:
     iface: str            # net0, net1…
-    mac: str              # en majuscules
+    mac: str              # uppercase
     bridge: Optional[str]
-    static_ip: Optional[str] = None  # IP fixée côté invité (LXC ip=… ou cloud-init)
+    static_ip: Optional[str] = None  # static IP set inside the guest (LXC ip=… or cloud-init)
 
 
 @dataclass
 class Guest:
     vmid: int
-    type: str             # "qemu" ou "lxc"
+    type: str             # "qemu" or "lxc"
     node: str
     config: Dict[str, str]
     mtime: float = 0.0
@@ -46,12 +46,12 @@ class Guest:
 
 
 def parse_config(text):
-    """Parse un fichier .conf Proxmox (section courante uniquement, sans les snapshots)."""
+    """Parse a Proxmox .conf file (current section only, snapshots are ignored)."""
     config = {}
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("["):
-            break  # début des snapshots / pending
+            break  # start of snapshots / pending section
         if not line or line.startswith("#"):
             continue
         key, sep, value = line.partition(":")
@@ -84,7 +84,7 @@ def parse_nics(guest_type, config):
         props = parse_props(config[key])
         mac = props.get("hwaddr") or props.get("macaddr")
         if not mac:
-            # QEMU : le MAC est la valeur du modèle (virtio=, e1000=…)
+            # QEMU: the MAC is the value of the model key (virtio=, e1000=…)
             mac = next((v for k, v in props.items() if k != "bridge" and MAC_RE.match(v)), None)
         if not mac or not MAC_RE.match(mac):
             continue
@@ -121,13 +121,13 @@ class ProxmoxHost:
 
     def _detect_node(self):
         try:
-            # /etc/pve/local -> nodes/<nom-du-nœud>
+            # /etc/pve/local -> nodes/<node-name>
             return os.path.basename(os.readlink(os.path.join(self.root, "local")))
         except OSError:
             return socket.gethostname().split(".")[0]
 
     def vmlist(self):
-        """Retourne {vmid: {'node':…, 'type':…}} pour tout le cluster."""
+        """Return {vmid: {'node': …, 'type': …}} for the whole cluster."""
         with open(os.path.join(self.root, ".vmlist")) as fh:
             data = json.load(fh)
         return {int(vmid): info for vmid, info in data.get("ids", {}).items()}
@@ -151,5 +151,5 @@ class ProxmoxHost:
             try:
                 guests.append(self.load_guest(vmid, info["type"], info["node"]))
             except OSError:
-                continue  # supprimé entre-temps
+                continue  # deleted in the meantime
         return guests

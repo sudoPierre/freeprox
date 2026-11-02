@@ -1,4 +1,4 @@
-"""Scénarios complets contre un faux serveur Freebox et un faux /etc/pve."""
+"""End-to-end scenarios against a fake Freebox server and a fake /etc/pve."""
 
 import os
 import shutil
@@ -65,15 +65,15 @@ class Scenario(unittest.TestCase):
         self.assertEqual(sorted(self.fbx.static), ["BC:24:11:00:01:01", "BC:24:11:00:02:00"])
         vm = self.fbx.static["BC:24:11:00:01:01"]
         self.assertEqual(vm["ip"], "192.168.1.10")
-        self.assertTrue(vm["comment"].startswith("[PVE] VM 101 web01 | pve/net0 | 2 vCPU, 2 Go, 20 Go | Linux |"))
-        self.assertEqual(self.fbx.static["BC:24:11:00:02:00"]["ip"], "192.168.1.77")  # IP statique du CT reprise
+        self.assertTrue(vm["comment"].startswith("[PVE] VM 101 web01 | pve/net0 | 2 vCPU, 2 GB, 20 GB | Linux |"))
+        self.assertEqual(self.fbx.static["BC:24:11:00:02:00"]["ip"], "192.168.1.77")  # CT static IP reused
 
-        # Une deuxième passe ne recrée rien.
+        # A second pass creates nothing new.
         self.service().run_once()
         self.assertEqual(len(self.fbx.static), 2)
 
     def test_prefers_current_dynamic_ip_and_avoids_used(self):
-        self.service().run_once()  # initialisation
+        self.service().run_once()  # initialization
         self.fbx.dynamic = [{"mac": "BC:24:11:00:01:02", "ip": "192.168.1.33"},
                             {"mac": "AA:AA:AA:AA:AA:AA", "ip": "192.168.1.10"}]
         self.pve.add(102, "qemu", VM.format(id=102, mac="BC:24:11:00:01:02"))
@@ -90,7 +90,7 @@ class Scenario(unittest.TestCase):
         self.service().run_once()
         self.assertEqual(self.fbx.static, {})
 
-        # Le verrou est levé : le conteneur est traité à la passe suivante.
+        # Lock released: the container is processed on the next pass.
         self.pve.add(106, "lxc", CT.format(id=106, mac="BC:24:11:00:01:06", ip="dhcp"))
         self.service().run_once()
         self.assertIn("BC:24:11:00:01:06", self.fbx.static)
@@ -111,7 +111,7 @@ class Scenario(unittest.TestCase):
     def test_existing_lease_comment_updated_not_duplicated(self):
         self.service().run_once()
         self.fbx.static["BC:24:11:00:01:08"] = {"id": "BC:24:11:00:01:08", "mac": "BC:24:11:00:01:08",
-                                                "ip": "192.168.1.20", "comment": "ancien"}
+                                                "ip": "192.168.1.20", "comment": "old"}
         self.pve.add(108, "qemu", VM.format(id=108, mac="BC:24:11:00:01:08"))
         self.service().run_once()
         self.assertEqual(self.fbx.static["BC:24:11:00:01:08"]["ip"], "192.168.1.20")

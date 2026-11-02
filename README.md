@@ -1,126 +1,125 @@
 # freeprox
 
-Service pour **Proxmox VE** qui, dès qu'une **VM** ou un **conteneur LXC** est créé,
-réserve automatiquement son adresse IP sur la **Freebox** (bail DHCP statique via l'API
-Freebox OS) et y ajoute un commentaire descriptif, par exemple :
+A service for **Proxmox VE** that, as soon as a **VM** or an **LXC container** is created,
+automatically reserves its IP address on the **Freebox** (static DHCP lease through the
+Freebox OS API) and attaches a descriptive comment to it, for example:
 
 ```
-192.168.1.42   BC:24:11:5E:0A:31   [PVE] VM 105 web01 | pve/net0 | 4 vCPU, 8 Go, 32 Go | Linux | 2026-11-02
-192.168.1.43   BC:24:11:9C:44:02   [PVE] LXC 210 dns01 | pve/net0 | 1 vCPU, 512 Mo, 8 Go | Debian | 2026-11-02
+192.168.1.42   BC:24:11:5E:0A:31   [PVE] VM 105 web01 | pve/net0 | 4 vCPU, 8 GB, 32 GB | Linux | 2026-11-02
+192.168.1.43   BC:24:11:9C:44:02   [PVE] LXC 210 dns01 | pve/net0 | 1 vCPU, 512 MB, 8 GB | Debian | 2026-11-02
 ```
 
-Aucune dépendance : Python 3 de la bibliothèque standard, déjà présent sur Proxmox.
+No dependencies: Python 3 standard library only, already available on Proxmox.
 
-## Fonctionnement
+## How it works
 
-Proxmox n'expose pas d'événement « invité créé » (les *hookscripts* ne concernent que le
-démarrage/arrêt d'un invité déjà configuré). freeprox tourne donc comme un service
-systemd qui scrute `/etc/pve/.vmlist` et les fichiers de configuration du nœud
-(toutes les 10 s par défaut) :
+Proxmox does not expose a "guest created" event (hookscripts only cover starting/stopping
+an already configured guest). freeprox therefore runs as a systemd service that polls
+`/etc/pve/.vmlist` and the node's guest configuration files (every 10 s by default):
 
-1. **Nouvel invité ou nouvelle carte réseau** sur un pont surveillé (`vmbr0` par défaut) :
-   - attente que la création soit terminée (pas de `lock:` dans la config, config stable) ;
-   - si un bail statique existe déjà pour ce MAC, il est conservé (commentaire mis à jour) ;
-   - sinon l'IP est choisie dans cet ordre :
-     1. l'IP statique déclarée dans l'invité (`ip=…` d'un LXC, `ipconfigN` cloud-init) ;
-     2. l'IP que le DHCP de la Freebox lui a déjà attribuée ;
-     3. la première IP libre du pool (ni réservée, ni louée, ni exclue, ne répondant pas au ping) ;
-   - création du bail statique avec le commentaire.
-2. **Invité supprimé** : optionnellement (`remove_on_destroy = true`), suppression des baux
-   que freeprox a lui-même créés.
-3. **Invité migré** vers un autre nœud du cluster : le service de ce nœud reprend le suivi
-   et met à jour le commentaire (le bail, lié au MAC, ne change pas).
+1. **New guest or new NIC** on a watched bridge (`vmbr0` by default):
+   - waits for the creation to finish (no `lock:` in the config, config no longer changing);
+   - if a static lease already exists for this MAC, it is kept (comment updated);
+   - otherwise the IP is chosen in this order:
+     1. the static IP declared inside the guest (LXC `ip=…`, cloud-init `ipconfigN`);
+     2. the IP the Freebox DHCP server already gave it;
+     3. the first free IP of the pool (not reserved, not leased, not excluded, not answering ping);
+   - the static lease is created with the comment.
+2. **Guest destroyed**: optionally (`remove_on_destroy = true`), the leases freeprox
+   created itself are deleted.
+3. **Guest migrated** to another cluster node: the service on that node takes over
+   tracking and updates the comment (the lease is tied to the MAC and does not change).
 
-Les invités déjà présents lors du premier démarrage sont ignorés (voir `freeprox sync --all`).
-Les modèles (templates) sont ignorés par défaut.
+Guests that already exist on first start are skipped (see `freeprox sync --all`).
+Templates are skipped by default.
 
 ## Installation
 
-Dans le **shell du nœud Proxmox** (en root), comme les scripts de tteck :
+In the **Proxmox node shell** (as root), tteck-style:
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/sudoPierre/freeprox/main/install.sh)"
 ```
 
-Le script, entièrement guidé (fenêtres whiptail) :
+The script is fully guided (whiptail dialogs):
 
-1. vérifie qu'il tourne sur Proxmox VE et installe les dépendances manquantes ;
-2. propose les réglages **par défaut** ou **avancés** (adresse de la Freebox, ponts réseau
-   reliés au LAN, pool d'IP, libération des baux à la suppression) ;
-3. installe freeprox dans `/opt/freeprox` et le service systemd ;
-4. **associe freeprox à la Freebox** : validez la demande sur l'écran LCD de la box ;
-5. vérifie le droit **« Modification des réglages de la Freebox »**, et explique comment
-   l'activer s'il manque (Freebox OS → *Paramètres de la Freebox* → *Gestion des accès* →
-   *Applications* → *Freeprox*) ;
-6. propose de réserver aussi les IP des VM/LXC déjà existants ;
-7. démarre le service.
+1. checks it runs on Proxmox VE and installs missing dependencies;
+2. offers **default** or **advanced** settings (Freebox address, network bridges connected
+   to the LAN, IP pool, lease release on destroy);
+3. installs freeprox into `/opt/freeprox` along with the systemd service;
+4. **pairs freeprox with the Freebox**: approve the request on the box LCD display;
+5. checks the **"Modification des réglages de la Freebox"** (settings modification)
+   permission and explains how to enable it if missing (Freebox OS → *Freebox Settings* →
+   *Access Management* → *Applications* → *Freeprox*);
+6. offers to also reserve IPs for the VMs/LXCs that already exist;
+7. starts the service.
 
-Relancer la même commande sur un nœud où freeprox est déjà installé ouvre un menu
-**Mettre à jour / Reconfigurer / Désinstaller**. Sans interface :
+Running the same command again on a node where freeprox is installed opens an
+**Update / Reconfigure / Uninstall** menu. Without the UI:
 
 ```sh
 bash /opt/freeprox/install.sh --update
-bash /opt/freeprox/install.sh --uninstall [--purge]   # --purge : supprime aussi config et jeton
+bash /opt/freeprox/install.sh --uninstall [--purge]   # --purge: also remove config and token
 ```
 
-Sur un cluster, lancez le script sur chaque nœud (chacun gère ses propres invités).
+On a cluster, run the script on every node (each one handles its own guests).
 
-Suivre l'activité : `journalctl -u freeprox -f`
+Follow activity: `journalctl -u freeprox -f`
 
 ## Configuration
 
-Fichier `/etc/freeprox/freeprox.conf` (voir [`etc/freeprox.conf`](etc/freeprox.conf),
-toutes les options y sont documentées). Les plus utiles :
+File `/etc/freeprox/freeprox.conf` (see [`etc/freeprox.conf`](etc/freeprox.conf), where
+every option is documented). The most useful ones:
 
-| Section | Option | Défaut | Rôle |
+| Section | Option | Default | Purpose |
 |---|---|---|---|
-| `[proxmox]` | `bridges` | `vmbr0` | ponts reliés au LAN de la Freebox |
-| `[dhcp]` | `pool_start` / `pool_end` | plage DHCP Freebox | où choisir les IP fixes |
-| `[dhcp]` | `exclude` | — | IP/plages à ne jamais attribuer |
-| `[comment]` | `template` | voir ci-dessus | format du commentaire |
-| `[daemon]` | `remove_on_destroy` | `false` | libérer le bail à la suppression |
-| `[daemon]` | `dry_run` | `false` | journaliser sans rien modifier |
+| `[proxmox]` | `bridges` | `vmbr0` | bridges connected to the Freebox LAN |
+| `[dhcp]` | `pool_start` / `pool_end` | Freebox DHCP range | where static IPs are picked |
+| `[dhcp]` | `exclude` | — | IPs/ranges never to assign |
+| `[comment]` | `template` | see above | comment format |
+| `[daemon]` | `remove_on_destroy` | `false` | release the lease on destroy |
+| `[daemon]` | `dry_run` | `false` | log without changing anything |
 
-Variables du gabarit de commentaire : `{type}` (`qemu`/`lxc`), `{type_label}` (`VM`/`LXC`),
+Comment template variables: `{type}` (`qemu`/`lxc`), `{type_label}` (`VM`/`LXC`),
 `{vmid}`, `{name}`, `{node}`, `{iface}`, `{mac}`, `{bridge}`, `{ip}`, `{cores}`, `{memory}`,
-`{memory_mib}`, `{disk}`, `{ostype}`, `{os}`, `{tags}`, `{date}` (date de création).
+`{memory_mib}`, `{disk}`, `{ostype}`, `{os}`, `{tags}`, `{date}` (creation date).
 
-Astuce : gardez un pool d'IP fixes **hors** de la plage DHCP dynamique de la Freebox
-(ex. réduire la plage DHCP à `.10-.99` et mettre `pool_start = 192.168.1.100`,
+Tip: keep the static IP pool **outside** the Freebox dynamic DHCP range
+(e.g. shrink the DHCP range to `.10-.99` and set `pool_start = 192.168.1.100`,
 `pool_end = 192.168.1.199`).
 
-## Commandes
+## Commands
 
 ```
-freeprox register              associer l'application à la Freebox
-freeprox check                 vérifier connexion, permissions et DHCP
-freeprox daemon [-n]           service (lancé par systemd) ; -n = dry-run
-freeprox sync [-n]             une seule passe
-freeprox sync --all [-n]       réserver aussi les invités déjà existants
-freeprox sync --vmid 105       (re)traiter un invité précis
-freeprox leases [--mine]       lister les baux statiques
-freeprox release 105 [...]     supprimer les baux créés pour un invité
+freeprox register              pair the application with the Freebox
+freeprox check                 check connection, permissions and DHCP
+freeprox daemon [-n]           service (started by systemd); -n = dry-run
+freeprox sync [-n]             run a single pass
+freeprox sync --all [-n]       also reserve IPs for existing guests
+freeprox sync --vmid 105       (re)process a specific guest
+freeprox leases [--mine]       list static leases
+freeprox release 105 [...]     delete the leases created for a guest
 ```
 
-## Remarques
+## Notes
 
-- Le bail est réservé dès la création : l'invité obtiendra l'IP à sa prochaine requête DHCP
-  (donc dès son premier démarrage s'il est en DHCP).
-- Pour un invité configuré en IP statique, la réservation garantit simplement que la
-  Freebox n'attribuera pas cette IP à un autre appareil.
-- Accès en HTTPS : `url = https://mafreebox.freebox.fr` avec `ca_file` pointant vers les
-  certificats racine Freebox, ou `verify_tls = false`.
-- La désinstallation laisse les baux existants sur la Freebox.
+- The lease is reserved at creation time: the guest gets the IP on its next DHCP request
+  (i.e. on first boot if it uses DHCP).
+- For a guest configured with a static IP, the reservation simply ensures the Freebox
+  never hands that IP out to another device.
+- HTTPS access: `url = https://mafreebox.freebox.fr` with `ca_file` pointing to the
+  Freebox root certificates, or `verify_tls = false`.
+- Uninstalling leaves existing leases on the Freebox.
 
-## Développement
+## Development
 
 ```sh
 python3 -m unittest discover -s tests -t .
 ```
 
-Les tests d'intégration utilisent un faux serveur Freebox OS et une fausse arborescence
-`/etc/pve` (`tests/fakes.py`).
+The integration tests use a fake Freebox OS server and a fake `/etc/pve` tree
+(`tests/fakes.py`).
 
-## Licence
+## License
 
 MIT

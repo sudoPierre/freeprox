@@ -1,4 +1,4 @@
-"""Interface en ligne de commande : freeprox <commande>."""
+"""Command line interface: freeprox <command>."""
 
 import argparse
 import logging
@@ -32,28 +32,28 @@ def make_service(cfg, args):
     return Freeprox(cfg, fbx, pve, state, dry_run=getattr(args, "dry_run", False))
 
 
-# -- commandes ---------------------------------------------------------------
+# -- commands ----------------------------------------------------------------
 
 def cmd_register(cfg, args):
     fbx, pve = build(cfg, with_token=False)
     info = fbx.discover()
-    print("Freebox détectée : %s (API %s)" % (info.get("device_name", "?"), info.get("api_version")))
+    print("Freebox found: %s (API %s)" % (info.get("device_name", "?"), info.get("api_version")))
     token, track_id = fbx.request_authorization(APP_NAME, __version__, "Proxmox %s" % pve.node)
-    print(">>> Validez la demande sur l'écran LCD de la Freebox (flèche droite / bouton OK)…")
+    print(">>> Approve the request on the Freebox LCD display (right arrow / OK button)...")
     status = "pending"
     deadline = time.time() + 180
     while status == "pending" and time.time() < deadline:
         time.sleep(2)
         status = fbx.authorization_status(track_id)
     if status != "granted":
-        print("Autorisation non accordée (statut : %s)." % status, file=sys.stderr)
+        print("Authorization not granted (status: %s)." % status, file=sys.stderr)
         return 1
     path = cfg.write_token(token)
-    print("Autorisation accordée, jeton enregistré dans %s" % path)
+    print("Authorization granted, token saved to %s" % path)
     print()
-    print("IMPORTANT : dans Freebox OS > Paramètres de la Freebox > Gestion des accès > Applications,")
-    print("éditez « %s » et cochez « Modification des réglages de la Freebox »." % APP_NAME)
-    print("Vérifiez ensuite avec : freeprox check")
+    print("IMPORTANT: in Freebox OS > Freebox Settings > Access Management > Applications,")
+    print("edit \"%s\" and tick \"Modification des réglages de la Freebox\" (settings)." % APP_NAME)
+    print("Then check with: freeprox check")
     return 0
 
 
@@ -64,13 +64,13 @@ def cmd_check(cfg, args):
     perms = fbx.login()
     ok = bool(perms.get("settings"))
     print("Session       : OK")
-    print("Permission    : réglages = %s" % ("oui" if ok else "NON (à activer dans Freebox OS)"))
+    print("Permission    : settings = %s" % ("yes" if ok else "NO (enable it in Freebox OS)"))
     dhcp = fbx.dhcp_config()
-    print("DHCP          : %s, passerelle %s/%s, plage %s - %s" % (
-        "actif" if dhcp.get("enabled") else "INACTIF", dhcp.get("gateway"), dhcp.get("netmask"),
+    print("DHCP          : %s, gateway %s/%s, range %s - %s" % (
+        "enabled" if dhcp.get("enabled") else "DISABLED", dhcp.get("gateway"), dhcp.get("netmask"),
         dhcp.get("ip_range_start"), dhcp.get("ip_range_end")))
-    print("Baux statiques: %d" % len(fbx.static_leases()))
-    print("Nœud Proxmox  : %s (ponts surveillés : %s)" % (pve.node, cfg.get("proxmox", "bridges") or "tous"))
+    print("Static leases : %d" % len(fbx.static_leases()))
+    print("Proxmox node  : %s (watched bridges: %s)" % (pve.node, cfg.get("proxmox", "bridges") or "all"))
     fbx.logout()
     return 0 if ok else 2
 
@@ -112,7 +112,7 @@ def cmd_release(cfg, args):
     svc = make_service(cfg, args)
     for vmid in args.vmid:
         count = svc.release_guest(vmid)
-        print("Invité %d : %d bail(s) supprimé(s)" % (vmid, count))
+        print("Guest %d: %d lease(s) deleted" % (vmid, count))
         if not svc.dry_run:
             svc.state.guests.pop(str(vmid), None)
     if not svc.dry_run:
@@ -122,25 +122,25 @@ def cmd_release(cfg, args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="freeprox", description="Réserve une IP Freebox pour chaque VM/LXC Proxmox.")
-    parser.add_argument("-c", "--config", help="fichier de configuration (défaut : /etc/freeprox/freeprox.conf)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="logs détaillés")
+    parser = argparse.ArgumentParser(prog="freeprox", description="Reserve a Freebox IP for every Proxmox VM/LXC.")
+    parser.add_argument("-c", "--config", help="configuration file (default: /etc/freeprox/freeprox.conf)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("register", help="associer freeprox à la Freebox (validation sur l'écran de la box)")
-    sub.add_parser("check", help="vérifier la connexion et les permissions")
-    p = sub.add_parser("daemon", help="surveiller en continu les créations de VM/LXC")
-    p.add_argument("-n", "--dry-run", action="store_true", help="n'effectue aucune modification")
-    p = sub.add_parser("sync", help="effectuer une seule passe")
-    p.add_argument("-a", "--all", action="store_true", help="traiter aussi les invités existants")
-    p.add_argument("--vmid", type=int, action="append", help="ne traiter que cet invité (répétable)")
-    p.add_argument("-n", "--dry-run", action="store_true", help="n'effectue aucune modification")
-    p = sub.add_parser("leases", help="lister les baux statiques de la Freebox")
-    p.add_argument("-m", "--mine", action="store_true", help="seulement ceux créés par freeprox")
-    p = sub.add_parser("release", help="supprimer les baux créés pour un invité")
+    sub.add_parser("register", help="pair freeprox with the Freebox (approve on the box display)")
+    sub.add_parser("check", help="check connection and permissions")
+    p = sub.add_parser("daemon", help="continuously watch for VM/LXC creation")
+    p.add_argument("-n", "--dry-run", action="store_true", help="do not change anything")
+    p = sub.add_parser("sync", help="run a single pass")
+    p.add_argument("-a", "--all", action="store_true", help="also process existing guests")
+    p.add_argument("--vmid", type=int, action="append", help="only process this guest (repeatable)")
+    p.add_argument("-n", "--dry-run", action="store_true", help="do not change anything")
+    p = sub.add_parser("leases", help="list the Freebox static leases")
+    p.add_argument("-m", "--mine", action="store_true", help="only those created by freeprox")
+    p = sub.add_parser("release", help="delete the leases created for a guest")
     p.add_argument("vmid", type=int, nargs="+")
-    p.add_argument("-n", "--dry-run", action="store_true", help="n'effectue aucune modification")
+    p.add_argument("-n", "--dry-run", action="store_true", help="do not change anything")
 
     args = parser.parse_args(argv)
     cfg = Config(args.config)

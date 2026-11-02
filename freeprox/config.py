@@ -1,4 +1,4 @@
-"""Chargement de la configuration (/etc/freeprox/freeprox.conf)."""
+"""Configuration loading (/etc/freeprox/freeprox.conf)."""
 
 import configparser
 import os
@@ -49,7 +49,7 @@ DEFAULTS = {
 class Config:
     def __init__(self, path=None):
         self.path = path or os.environ.get("FREEPROX_CONFIG", DEFAULT_PATH)
-        # interpolation=None : le gabarit de commentaire contient des accolades et peut contenir des %.
+        # interpolation=None: the comment template contains braces and may contain %.
         self._cp = configparser.ConfigParser(interpolation=None)
         self._cp.read_dict(DEFAULTS)
         self._cp.read(self.path)

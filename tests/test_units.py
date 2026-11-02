@@ -6,7 +6,7 @@ from freeprox.config import DEFAULT_TEMPLATE
 from freeprox.proxmox import Guest, disk_size_gib, parse_config, parse_nics
 
 QEMU_CONF = """\
-#Ma%20VM
+#My%20VM
 boot: order=scsi0;net0
 cores: 2
 sockets: 2
@@ -45,7 +45,7 @@ DHCP = {"gateway": "192.168.1.254", "netmask": "255.255.255.0",
 class ProxmoxParsing(unittest.TestCase):
     def test_qemu(self):
         cfg = parse_config(QEMU_CONF)
-        self.assertEqual(cfg["name"], "web01")  # la section snapshot est ignorée
+        self.assertEqual(cfg["name"], "web01")  # the snapshot section is ignored
         nics = parse_nics("qemu", cfg)
         self.assertEqual([(n.iface, n.mac, n.bridge, n.static_ip) for n in nics], [
             ("net0", "BC:24:11:AA:BB:CC", "vmbr0", "192.168.1.42"),
@@ -66,7 +66,7 @@ class Comment(unittest.TestCase):
         cfg = parse_config(QEMU_CONF)
         guest = Guest(105, "qemu", "pve", cfg, nics=parse_nics("qemu", cfg))
         text = render_comment(DEFAULT_TEMPLATE, guest, guest.nics[0], "192.168.1.42")
-        self.assertTrue(text.startswith("[PVE] VM 105 web01 | pve/net0 | 4 vCPU, 4 Go, 32 Go | Linux | 2024-10-"))
+        self.assertTrue(text.startswith("[PVE] VM 105 web01 | pve/net0 | 4 vCPU, 4 GB, 32 GB | Linux | 2024-10-"))
 
     def test_unknown_key_and_truncation(self):
         cfg = parse_config(LXC_CONF)

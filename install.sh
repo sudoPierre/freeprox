@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# freeprox — installation / mise à jour / désinstallation sur un nœud Proxmox VE.
+# freeprox — install / update / uninstall on a Proxmox VE node.
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/sudoPierre/freeprox/main/install.sh)"
 #
-# Options non interactives : --update, --uninstall [--purge]
+# Non-interactive options: --update, --uninstall [--purge]
 
 set -Eeuo pipefail
 
@@ -15,7 +15,7 @@ CONF_DIR="/etc/freeprox"
 CONF="$CONF_DIR/freeprox.conf"
 BACKTITLE="Proxmox VE Helper — freeprox"
 
-# -- affichage (style tteck) -------------------------------------------------
+# -- output (tteck style) ----------------------------------------------------
 
 YW=$'\033[33m'; BL=$'\033[36m'; RD=$'\033[01;31m'; GN=$'\033[1;92m'; DGN=$'\033[32m'
 CL=$'\033[m'; BFR=$'\r\033[K'; HOLD=" "; CM="${GN}✓${CL}"; CROSS="${RD}✗${CL}"
@@ -31,7 +31,7 @@ header_info() {
 /_/ /_/   \___/\___/ .___/_/   \____/_/|_|
                   /_/
 EOF
-  echo -e "${DGN}  Réservation automatique des IP Freebox pour les VM/LXC Proxmox${CL}\n"
+  echo -e "${DGN}  Automatic Freebox IP reservation for Proxmox VMs/LXCs${CL}\n"
 }
 
 spinner() {
@@ -63,28 +63,28 @@ msg_warn()  { stop_spinner; echo -e "${BFR} ${YW}⚠${CL}  ${YW}$1${CL}"; }
 on_error() {
   local code=$? line=$1
   stop_spinner
-  echo -e "\n${CROSS} ${RD}Erreur (code ${code}) à la ligne ${line} : ${YW}${BASH_COMMAND}${CL}\n"
+  echo -e "\n${CROSS} ${RD}Error (code ${code}) at line ${line}: ${YW}${BASH_COMMAND}${CL}\n"
   exit "$code"
 }
 trap 'on_error $LINENO' ERR
 trap 'stop_spinner' EXIT
 
-exit_script() { stop_spinner; clear; echo -e "${CROSS} ${RD}Abandon.${CL}\n"; exit 0; }
+exit_script() { stop_spinner; clear; echo -e "${CROSS} ${RD}Aborted.${CL}\n"; exit 0; }
 
-# -- vérifications -----------------------------------------------------------
+# -- checks ------------------------------------------------------------------
 
 check_root() {
   if [[ "$(id -u)" -ne 0 ]]; then
-    msg_error "Ce script doit être lancé en root (sudo -i)."; exit 1
+    msg_error "This script must be run as root (sudo -i)."; exit 1
   fi
 }
 
 check_pve() {
   if ! command -v pveversion >/dev/null 2>&1; then
-    msg_error "Proxmox VE non détecté : ce script doit être lancé sur un nœud Proxmox."; exit 1
+    msg_error "Proxmox VE not detected: this script must be run on a Proxmox node."; exit 1
   fi
   if [[ ! -f /etc/pve/.vmlist ]]; then
-    msg_error "/etc/pve n'est pas monté (service pve-cluster arrêté ?)."; exit 1
+    msg_error "/etc/pve is not mounted (pve-cluster service stopped?)."; exit 1
   fi
 }
 
@@ -94,15 +94,15 @@ check_deps() {
     command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
   done
   if (( ${#missing[@]} )); then
-    msg_info "Installation des dépendances (${missing[*]})"
+    msg_info "Installing dependencies (${missing[*]})"
     apt-get update -qq >/dev/null && apt-get install -y -qq "${missing[@]}" >/dev/null
-    msg_ok "Dépendances installées"
+    msg_ok "Dependencies installed"
   fi
 }
 
 is_installed() { [[ -d "$PREFIX/freeprox" ]]; }
 
-# -- récupération du code ----------------------------------------------------
+# -- fetching the code -------------------------------------------------------
 
 SRC=""
 fetch_source() {
@@ -110,19 +110,19 @@ fetch_source() {
   here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
   if [[ -n "$here" && -f "$here/freeprox/__init__.py" && -z "${FREEPROX_FORCE_DOWNLOAD:-}" ]]; then
     SRC="$here"
-    msg_ok "Sources locales utilisées (${SRC})"
+    msg_ok "Using local sources (${SRC})"
     return
   fi
-  msg_info "Téléchargement de ${APP} (${REPO}@${BRANCH})"
+  msg_info "Downloading ${APP} (${REPO}@${BRANCH})"
   local tmp
   tmp="$(mktemp -d)"
   curl -fsSL "https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz" | tar -xz -C "$tmp"
   SRC="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -n1)"
-  msg_ok "Téléchargé ${APP} (${REPO}@${BRANCH})"
+  msg_ok "Downloaded ${APP} (${REPO}@${BRANCH})"
 }
 
 install_files() {
-  msg_info "Installation des fichiers"
+  msg_info "Installing files"
   rm -rf "$PREFIX/freeprox"
   mkdir -p "$PREFIX"
   cp -r "$SRC/freeprox" "$PREFIX/"
@@ -133,7 +133,7 @@ install_files() {
   install -m 0644 "$SRC/systemd/freeprox.service" /etc/systemd/system/freeprox.service
   install -d -m 0700 "$CONF_DIR"
   systemctl daemon-reload
-  msg_ok "Fichiers installés ($(installed_version))"
+  msg_ok "Files installed ($(installed_version))"
 }
 
 installed_version() {
@@ -159,15 +159,15 @@ list_bridges() {
 }
 
 default_settings() {
-  echo -e " ${BL}Freebox :${CL}            ${GN}${FBX_URL}${CL}"
-  echo -e " ${BL}Ponts surveillés :${CL}   ${GN}${BRIDGES}${CL}"
-  echo -e " ${BL}Pool d'IP :${CL}          ${GN}plage DHCP de la Freebox${CL}"
-  echo -e " ${BL}Libérer à la suppr. :${CL} ${GN}non${CL}\n"
+  echo -e " ${BL}Freebox:${CL}             ${GN}${FBX_URL}${CL}"
+  echo -e " ${BL}Watched bridges:${CL}     ${GN}${BRIDGES}${CL}"
+  echo -e " ${BL}IP pool:${CL}             ${GN}Freebox DHCP range${CL}"
+  echo -e " ${BL}Release on destroy:${CL}  ${GN}no${CL}\n"
 }
 
 advanced_settings() {
   FBX_URL=$(whiptail --backtitle "$BACKTITLE" --title "FREEBOX" --inputbox \
-    "Adresse de la Freebox" 9 60 "$FBX_URL" 3>&1 1>&2 2>&3) || exit_script
+    "Freebox address" 9 60 "$FBX_URL" 3>&1 1>&2 2>&3) || exit_script
 
   local items=() b state
   while read -r b; do
@@ -176,43 +176,43 @@ advanced_settings() {
     items+=("$b" "" "$state")
   done < <(list_bridges)
   if (( ${#items[@]} )); then
-    BRIDGES=$(whiptail --backtitle "$BACKTITLE" --title "PONTS RÉSEAU" --separate-output --checklist \
-      "Ponts reliés au LAN de la Freebox\n(seules les cartes réseau branchées dessus auront une IP réservée)" \
+    BRIDGES=$(whiptail --backtitle "$BACKTITLE" --title "NETWORK BRIDGES" --separate-output --checklist \
+      "Bridges connected to the Freebox LAN\n(only NICs attached to them get an IP reservation)" \
       16 60 6 "${items[@]}" 3>&1 1>&2 2>&3 | tr '\n' ' ' | xargs) || exit_script
   else
-    BRIDGES=$(whiptail --backtitle "$BACKTITLE" --title "PONTS RÉSEAU" --inputbox \
-      "Ponts reliés au LAN de la Freebox (séparés par des espaces)" 9 60 "$BRIDGES" 3>&1 1>&2 2>&3) || exit_script
+    BRIDGES=$(whiptail --backtitle "$BACKTITLE" --title "NETWORK BRIDGES" --inputbox \
+      "Bridges connected to the Freebox LAN (space separated)" 9 60 "$BRIDGES" 3>&1 1>&2 2>&3) || exit_script
   fi
 
   while true; do
-    POOL_START=$(whiptail --backtitle "$BACKTITLE" --title "POOL D'IP" --inputbox \
-      "Première IP à attribuer\n(laisser vide = plage DHCP de la Freebox)" 10 60 "$POOL_START" 3>&1 1>&2 2>&3) || exit_script
+    POOL_START=$(whiptail --backtitle "$BACKTITLE" --title "IP POOL" --inputbox \
+      "First IP to assign\n(leave empty = Freebox DHCP range)" 10 60 "$POOL_START" 3>&1 1>&2 2>&3) || exit_script
     [[ -z "$POOL_START" ]] && { POOL_END=""; break; }
-    POOL_END=$(whiptail --backtitle "$BACKTITLE" --title "POOL D'IP" --inputbox \
-      "Dernière IP à attribuer" 9 60 "$POOL_END" 3>&1 1>&2 2>&3) || exit_script
+    POOL_END=$(whiptail --backtitle "$BACKTITLE" --title "IP POOL" --inputbox \
+      "Last IP to assign" 9 60 "$POOL_END" 3>&1 1>&2 2>&3) || exit_script
     valid_ip "$POOL_START" && valid_ip "$POOL_END" && break
-    whiptail --backtitle "$BACKTITLE" --msgbox "Adresse IP invalide, recommencez." 8 50
+    whiptail --backtitle "$BACKTITLE" --msgbox "Invalid IP address, please try again." 8 50
   done
 
-  if whiptail --backtitle "$BACKTITLE" --title "SUPPRESSION" --defaultno --yesno \
-    "Supprimer automatiquement le bail Freebox quand une VM/un LXC est détruit ?" 9 60; then
+  if whiptail --backtitle "$BACKTITLE" --title "DESTROY" --defaultno --yesno \
+    "Automatically delete the Freebox lease when a VM/LXC is destroyed?" 9 60; then
     REMOVE_ON_DESTROY="true"
   else
     REMOVE_ON_DESTROY="false"
   fi
 
-  echo -e " ${BL}Freebox :${CL}            ${GN}${FBX_URL}${CL}"
-  echo -e " ${BL}Ponts surveillés :${CL}   ${GN}${BRIDGES:-tous}${CL}"
-  echo -e " ${BL}Pool d'IP :${CL}          ${GN}${POOL_START:-plage DHCP}${POOL_END:+ - $POOL_END}${CL}"
-  echo -e " ${BL}Libérer à la suppr. :${CL} ${GN}$([[ $REMOVE_ON_DESTROY == true ]] && echo oui || echo non)${CL}\n"
+  echo -e " ${BL}Freebox:${CL}             ${GN}${FBX_URL}${CL}"
+  echo -e " ${BL}Watched bridges:${CL}     ${GN}${BRIDGES:-all}${CL}"
+  echo -e " ${BL}IP pool:${CL}             ${GN}${POOL_START:-DHCP range}${POOL_END:+ - $POOL_END}${CL}"
+  echo -e " ${BL}Release on destroy:${CL}  ${GN}$([[ $REMOVE_ON_DESTROY == true ]] && echo yes || echo no)${CL}\n"
 
   whiptail --backtitle "$BACKTITLE" --title "CONFIRMATION" --yesno \
-    "Installer freeprox avec ces réglages ?" 8 50 || exit_script
+    "Install freeprox with these settings?" 8 50 || exit_script
 }
 
 choose_settings() {
-  if whiptail --backtitle "$BACKTITLE" --title "RÉGLAGES" --yes-button "Par défaut" --no-button "Avancés" --yesno \
-    "Utiliser les réglages par défaut ?\n\n  Freebox : ${FBX_URL}\n  Pont : ${BRIDGES}\n  Pool : plage DHCP de la Freebox\n  Libération à la suppression : non" 13 62; then
+  if whiptail --backtitle "$BACKTITLE" --title "SETTINGS" --yes-button "Default" --no-button "Advanced" --yesno \
+    "Use default settings?\n\n  Freebox: ${FBX_URL}\n  Bridge: ${BRIDGES}\n  Pool: Freebox DHCP range\n  Release on destroy: no" 13 62; then
     default_settings
   else
     header_info
@@ -221,11 +221,11 @@ choose_settings() {
 }
 
 write_config() {
-  msg_info "Écriture de la configuration"
+  msg_info "Writing configuration"
   [[ -f "$CONF" ]] && cp -p "$CONF" "$CONF.bak"
   (umask 077; cat >"$CONF") <<EOF
-# Généré par install.sh le $(date '+%Y-%m-%d %H:%M').
-# Toutes les options sont documentées dans $PREFIX/freeprox.conf.example
+# Generated by install.sh on $(date '+%Y-%m-%d %H:%M').
+# All options are documented in $PREFIX/freeprox.conf.example
 
 [freebox]
 url = ${FBX_URL}
@@ -240,49 +240,49 @@ pool_end = ${POOL_END}
 [daemon]
 remove_on_destroy = ${REMOVE_ON_DESTROY}
 EOF
-  msg_ok "Configuration écrite (${CONF}$([[ -f "$CONF.bak" ]] && echo ", ancienne : $CONF.bak"))"
+  msg_ok "Configuration written (${CONF}$([[ -f "$CONF.bak" ]] && echo ", previous one: $CONF.bak"))"
 }
 
-# -- association Freebox -----------------------------------------------------
+# -- Freebox pairing ---------------------------------------------------------
 
 register_freebox() {
   if [[ -s "$CONF_DIR/app_token" ]]; then
-    msg_ok "Jeton Freebox déjà présent"
+    msg_ok "Freebox token already present"
     return
   fi
-  whiptail --backtitle "$BACKTITLE" --title "ASSOCIATION FREEBOX" --msgbox \
-    "freeprox va demander l'accès à l'API de la Freebox.\n\nAprès avoir validé, rendez-vous devant la Freebox : une demande va s'afficher sur son écran LCD.\nAcceptez-la avec la flèche droite / le bouton OK (3 minutes maximum)." 13 66
-  echo -e " ${YW}→ Validez la demande sur l'écran de la Freebox...${CL}"
+  whiptail --backtitle "$BACKTITLE" --title "FREEBOX PAIRING" --msgbox \
+    "freeprox will now request access to the Freebox API.\n\nAfter pressing OK, go to the Freebox: a request will show up on its LCD display.\nAccept it with the right arrow / OK button (3 minutes max)." 13 66
+  echo -e " ${YW}→ Approve the request on the Freebox display...${CL}"
   until freeprox register; do
-    whiptail --backtitle "$BACKTITLE" --title "ASSOCIATION FREEBOX" --yes-button "Réessayer" --no-button "Abandonner" \
-      --yesno "L'association a échoué ou n'a pas été validée à temps.\n\nRéessayer ?" 10 60 || exit_script
+    whiptail --backtitle "$BACKTITLE" --title "FREEBOX PAIRING" --yes-button "Retry" --no-button "Abort" \
+      --yesno "Pairing failed or was not approved in time.\n\nRetry?" 10 60 || exit_script
   done
-  msg_ok "Freebox associée"
+  msg_ok "Freebox paired"
 }
 
 check_permission() {
   local rc
   while true; do
-    msg_info "Vérification des droits sur la Freebox"
+    msg_info "Checking Freebox permissions"
     rc=0; freeprox check >/tmp/freeprox-check.log 2>&1 || rc=$?
     if (( rc == 0 )); then
-      msg_ok "Droits Freebox OK"
+      msg_ok "Freebox permissions OK"
       sed 's/^/     /' /tmp/freeprox-check.log
       rm -f /tmp/freeprox-check.log
       return
     fi
     if (( rc == 2 )); then
-      msg_warn "Droit « Modification des réglages » manquant"
-      whiptail --backtitle "$BACKTITLE" --title "PERMISSION REQUISE" --yes-button "C'est fait" --no-button "Plus tard" --yesno \
-        "Dans Freebox OS (http://mafreebox.freebox.fr) :\n\n  Paramètres de la Freebox\n  > Gestion des accès > onglet Applications\n  > Freeprox (crayon)\n  > cocher « Modification des réglages de la Freebox »\n\nPuis cliquez sur « C'est fait »." 16 64 && continue
-      msg_warn "Le service ne pourra pas créer de bail tant que le droit n'est pas accordé"
+      msg_warn "Missing \"settings modification\" permission"
+      whiptail --backtitle "$BACKTITLE" --title "PERMISSION REQUIRED" --yes-button "Done" --no-button "Later" --yesno \
+        "In Freebox OS (http://mafreebox.freebox.fr):\n\n  Freebox Settings\n  > Access Management > Applications tab\n  > Freeprox (pencil icon)\n  > tick \"Modification des réglages de la Freebox\"\n\nThen click \"Done\"." 16 64 && continue
+      msg_warn "The service cannot create leases until the permission is granted"
       return
     fi
-    msg_error "Connexion à la Freebox impossible :"
+    msg_error "Cannot connect to the Freebox:"
     sed 's/^/     /' /tmp/freeprox-check.log
     rm -f /tmp/freeprox-check.log
-    whiptail --backtitle "$BACKTITLE" --title "ERREUR" --yes-button "Réessayer" --no-button "Abandonner" \
-      --yesno "La vérification a échoué (voir le terminal).\n\nRéessayer ?" 10 60 || exit_script
+    whiptail --backtitle "$BACKTITLE" --title "ERROR" --yes-button "Retry" --no-button "Abort" \
+      --yesno "The check failed (see the terminal).\n\nRetry?" 10 60 || exit_script
   done
 }
 
@@ -298,24 +298,24 @@ print(sum(1 for g in pve.local_guests() if not g.is_template and any(not bridges
 EOF
 )
   (( count > 0 )) || return 0
-  if whiptail --backtitle "$BACKTITLE" --title "INVITÉS EXISTANTS" --defaultno --yesno \
-    "${count} VM/LXC existent déjà sur ce nœud.\n\nRéserver aussi leur IP sur la Freebox maintenant ?\n(sinon seuls les nouveaux invités seront traités)" 12 62; then
-    msg_info "Réservation des IP des invités existants"
+  if whiptail --backtitle "$BACKTITLE" --title "EXISTING GUESTS" --defaultno --yesno \
+    "${count} VM/LXC already exist on this node.\n\nReserve their IPs on the Freebox now as well?\n(otherwise only new guests will be handled)" 12 62; then
+    msg_info "Reserving IPs for existing guests"
     freeprox sync --all >/tmp/freeprox-sync.log 2>&1 || true
-    msg_ok "Invités existants traités"
+    msg_ok "Existing guests processed"
     sed 's/^/     /' /tmp/freeprox-sync.log
     rm -f /tmp/freeprox-sync.log
   fi
 }
 
 start_service() {
-  msg_info "Démarrage du service"
+  msg_info "Starting service"
   systemctl enable -q --now freeprox
   sleep 2
   if systemctl is-active -q freeprox; then
-    msg_ok "Service freeprox démarré"
+    msg_ok "freeprox service started"
   else
-    msg_error "Le service n'a pas démarré : journalctl -u freeprox"
+    msg_error "The service failed to start: journalctl -u freeprox"
   fi
 }
 
@@ -330,59 +330,59 @@ do_install() {
   check_permission
   offer_existing
   start_service
-  echo -e "\n ${GN}freeprox est installé.${CL} Chaque nouvelle VM/LXC aura son IP réservée sur la Freebox."
-  echo -e " Suivre l'activité :  ${BL}journalctl -u freeprox -f${CL}"
-  echo -e " Baux créés :         ${BL}freeprox leases --mine${CL}"
-  echo -e " Mettre à jour :      ${BL}bash $PREFIX/install.sh --update${CL}\n"
+  echo -e "\n ${GN}freeprox is installed.${CL} Every new VM/LXC will get its IP reserved on the Freebox."
+  echo -e " Follow activity:  ${BL}journalctl -u freeprox -f${CL}"
+  echo -e " Created leases:   ${BL}freeprox leases --mine${CL}"
+  echo -e " Update:           ${BL}bash $PREFIX/install.sh --update${CL}\n"
 }
 
 do_update() {
   fetch_source
   install_files
   if systemctl is-enabled -q freeprox 2>/dev/null; then
-    msg_info "Redémarrage du service"
+    msg_info "Restarting service"
     systemctl restart freeprox
-    msg_ok "Service redémarré"
+    msg_ok "Service restarted"
   fi
-  echo -e "\n ${GN}freeprox mis à jour ($(installed_version)).${CL}\n"
+  echo -e "\n ${GN}freeprox updated ($(installed_version)).${CL}\n"
 }
 
 do_uninstall() {
   local purge="${1:-}"
-  msg_info "Arrêt du service"
+  msg_info "Stopping service"
   systemctl disable -q --now freeprox 2>/dev/null || true
-  msg_ok "Service arrêté"
-  msg_info "Suppression des fichiers"
+  msg_ok "Service stopped"
+  msg_info "Removing files"
   rm -f /etc/systemd/system/freeprox.service /usr/local/bin/freeprox
   rm -rf "$PREFIX"
   systemctl daemon-reload
   if [[ "$purge" == "purge" ]]; then
     rm -rf "$CONF_DIR" /var/lib/freeprox
-    msg_ok "freeprox supprimé (configuration et jeton compris)"
+    msg_ok "freeprox removed (including configuration and token)"
   else
-    msg_ok "freeprox supprimé (configuration conservée dans ${CONF_DIR})"
+    msg_ok "freeprox removed (configuration kept in ${CONF_DIR})"
   fi
-  echo -e "\n Les baux déjà créés restent sur la Freebox (Freebox OS > DHCP > Baux statiques).\n"
+  echo -e "\n Leases already created stay on the Freebox (Freebox OS > DHCP > Static leases).\n"
 }
 
 menu_installed() {
   local choice
-  choice=$(whiptail --backtitle "$BACKTITLE" --title "FREEPROX $(installed_version) DÉJÀ INSTALLÉ" --menu \
-    "Que voulez-vous faire ?" 15 64 5 \
-    "update"      "Mettre à jour" \
-    "reconfigure" "Reconfigurer (et réassocier si besoin)" \
-    "uninstall"   "Désinstaller (garder config et jeton)" \
-    "purge"       "Désinstaller complètement" \
+  choice=$(whiptail --backtitle "$BACKTITLE" --title "FREEPROX $(installed_version) ALREADY INSTALLED" --menu \
+    "What do you want to do?" 15 64 5 \
+    "update"      "Update" \
+    "reconfigure" "Reconfigure (and re-pair if needed)" \
+    "uninstall"   "Uninstall (keep config and token)" \
+    "purge"       "Uninstall completely" \
     3>&1 1>&2 2>&3) || exit_script
   case "$choice" in
     update) do_update ;;
     reconfigure) do_install ;;
     uninstall)
-      whiptail --backtitle "$BACKTITLE" --defaultno --yesno "Désinstaller freeprox ?" 8 40 || exit_script
+      whiptail --backtitle "$BACKTITLE" --defaultno --yesno "Uninstall freeprox?" 8 40 || exit_script
       do_uninstall ;;
     purge)
       whiptail --backtitle "$BACKTITLE" --defaultno --yesno \
-        "Supprimer freeprox, sa configuration et son jeton Freebox ?" 8 60 || exit_script
+        "Remove freeprox, its configuration and its Freebox token?" 8 60 || exit_script
       do_uninstall purge ;;
   esac
 }
@@ -394,7 +394,7 @@ main() {
     --update) check_pve; check_deps; do_update; return ;;
     --uninstall) do_uninstall "$([[ "${2:-}" == "--purge" ]] && echo purge)"; return ;;
     "") ;;
-    *) echo "Usage : $0 [--update | --uninstall [--purge]]"; exit 1 ;;
+    *) echo "Usage: $0 [--update | --uninstall [--purge]]"; exit 1 ;;
   esac
   check_pve
   check_deps
@@ -402,7 +402,7 @@ main() {
     menu_installed
   else
     whiptail --backtitle "$BACKTITLE" --title "FREEPROX" --yesno \
-      "Installer freeprox sur ce nœud ($(hostname)) ?\n\nÀ chaque création de VM ou de LXC, son IP sera réservée sur la Freebox avec un commentaire descriptif." 12 64 || exit_script
+      "Install freeprox on this node ($(hostname))?\n\nWhenever a VM or LXC is created, its IP will be reserved on the Freebox with a descriptive comment." 12 64 || exit_script
     do_install
   fi
 }

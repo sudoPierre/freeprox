@@ -1,4 +1,4 @@
-"""Construction du commentaire attaché au bail statique."""
+"""Build the comment attached to the static lease."""
 
 import re
 import time
@@ -6,7 +6,7 @@ import time
 from .proxmox import disk_size_gib, parse_props
 
 OS_LABELS = {
-    "l26": "Linux", "l24": "Linux 2.4", "other": "Autre", "solaris": "Solaris",
+    "l26": "Linux", "l24": "Linux 2.4", "other": "Other", "solaris": "Solaris",
     "wxp": "Windows XP", "w2k": "Windows 2000", "w2k3": "Windows 2003", "w2k8": "Windows 2008",
     "wvista": "Windows Vista", "win7": "Windows 7", "win8": "Windows 8/2012",
     "win10": "Windows 10/2016/2019", "win11": "Windows 11/2022/2025",
@@ -20,22 +20,22 @@ class _SafeDict(dict):
 
 def _human_mib(mib):
     if mib >= 1024 and mib % 1024 == 0:
-        return "%d Go" % (mib // 1024)
+        return "%d GB" % (mib // 1024)
     if mib >= 1024:
-        return "%.1f Go" % (mib / 1024)
-    return "%d Mo" % mib
+        return "%.1f GB" % (mib / 1024)
+    return "%d MB" % mib
 
 
 def _human_gib(gib):
     if gib <= 0:
         return "?"
     if gib >= 1024:
-        return "%.1f To" % (gib / 1024)
-    return ("%d Go" % gib) if gib == int(gib) else ("%.1f Go" % gib)
+        return "%.1f TB" % (gib / 1024)
+    return ("%d GB" % gib) if gib == int(gib) else ("%.1f GB" % gib)
 
 
 def _creation_time(guest):
-    # Les VM QEMU récentes stockent leur date de création dans "meta: …,ctime=<epoch>".
+    # Recent QEMU VMs store their creation date in "meta: …,ctime=<epoch>".
     ctime = parse_props(guest.config.get("meta", "")).get("ctime")
     try:
         return float(ctime)

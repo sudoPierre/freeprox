@@ -1,4 +1,4 @@
-"""Choix d'une adresse IP libre sur le LAN de la Freebox."""
+"""Pick a free IP address on the Freebox LAN."""
 
 import ipaddress
 import subprocess
@@ -13,7 +13,7 @@ def lan_network(dhcp_config):
 
 
 def parse_excludes(items):
-    """Accepte des IP seules ou des plages 'a.b.c.d-a.b.c.e'."""
+    """Accept single IPs or 'a.b.c.d-a.b.c.e' ranges."""
     excluded = set()
     for item in items:
         if "-" in item:
@@ -33,12 +33,12 @@ def answers_ping(ip):
 
 
 def pick_free_ip(dhcp_config, used, pool_start=None, pool_end=None, excluded=(), ping_check=False, pinger=answers_ping):
-    """Première IP du pool qui n'est ni réservée, ni louée, ni exclue (ni joignable si ping_check)."""
+    """First IP of the pool that is not reserved, leased or excluded (nor reachable if ping_check)."""
     network = lan_network(dhcp_config)
     start = ipaddress.IPv4Address(pool_start or dhcp_config["ip_range_start"])
     end = ipaddress.IPv4Address(pool_end or dhcp_config["ip_range_end"])
     if start not in network or end not in network or start > end:
-        raise AllocationError("Pool d'IP %s-%s invalide pour le réseau %s" % (start, end, network))
+        raise AllocationError("Invalid IP pool %s-%s for network %s" % (start, end, network))
     taken = {ipaddress.IPv4Address(ip) for ip in used if ip}
     taken.add(ipaddress.IPv4Address(dhcp_config["gateway"]))
     taken.update(excluded)
@@ -50,4 +50,4 @@ def pick_free_ip(dhcp_config, used, pool_start=None, pool_end=None, excluded=(),
         if ping_check and pinger(ip):
             continue
         return str(ip)
-    raise AllocationError("Plus aucune IP libre dans le pool %s-%s" % (start, end))
+    raise AllocationError("No free IP left in pool %s-%s" % (start, end))
