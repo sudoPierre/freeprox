@@ -4,6 +4,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -13,6 +14,13 @@ QEMU_DISK_RE = re.compile(r"^(scsi|virtio|sata|ide)\d+$")
 SIZE_RE = re.compile(r"(?:^|,)size=(\d+(?:\.\d+)?)([KMGT]?)", re.I)
 
 CONF_DIRS = {"qemu": "qemu-server", "lxc": "lxc"}
+CLI_TOOLS = {"qemu": "qm", "lxc": "pct"}
+TAG_RE = re.compile(r"^[a-z0-9_][a-z0-9_+.-]*$", re.I)
+TAG_SPLIT_RE = re.compile(r"[;, ]+")
+
+
+class ProxmoxError(Exception):
+    pass
 
 
 @dataclass
@@ -43,6 +51,13 @@ class Guest:
     @property
     def lock(self):
         return self.config.get("lock")
+
+    @property
+    def tags(self):
+        return [t for t in TAG_SPLIT_RE.split(self.config.get("tags", "")) if t]
+
+    def has_tag(self, tag):
+        return tag.lower() in (t.lower() for t in self.tags)
 
 
 def parse_config(text):
@@ -114,10 +129,20 @@ def disk_size_gib(guest_type, config):
     return total
 
 
+def _run(args):
+    try:
+        subprocess.run(args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    except subprocess.CalledProcessError as exc:
+        raise ProxmoxError("%s: %s" % (" ".join(args), (exc.stderr or "").strip() or exc))
+    except OSError as exc:
+        raise ProxmoxError("%s: %s" % (args[0], exc))
+
+
 class ProxmoxHost:
-    def __init__(self, pve_root="/etc/pve", node=None):
+    def __init__(self, pve_root="/etc/pve", node=None, runner=_run):
         self.root = pve_root
         self.node = node or self._detect_node()
+        self.runner = runner
 
     def _detect_node(self):
         try:
@@ -142,6 +167,15 @@ class ProxmoxHost:
         guest = Guest(vmid=vmid, type=guest_type, node=node, config=config, mtime=os.path.getmtime(path))
         guest.nics = parse_nics(guest_type, config)
         return guest
+
+    def set_tags(self, guest, tags):
+        """Replace the guest tags through qm/pct (which take the guest config lock)."""
+        tool = CLI_TOOLS[guest.type]
+        if tags:
+            self.runner([tool, "set", str(guest.vmid), "--tags", ";".join(tags)])
+        else:
+            self.runner([tool, "set", str(guest.vmid), "--delete", "tags"])
+        guest.config["tags"] = ";".join(tags)
 
     def local_guests(self, vmlist=None):
         guests = []

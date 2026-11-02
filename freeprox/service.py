@@ -9,6 +9,7 @@ import time
 
 from .allocator import lan_network, parse_excludes, pick_free_ip, answers_ping
 from .comment import render_comment
+from .proxmox import TAG_RE
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ class Freeprox:
         self.dry_run = dry_run or config.getbool("daemon", "dry_run")
         self.pinger = pinger
         self.bridges = set(config.getlist("proxmox", "bridges"))
+        self.tag = config.get("proxmox", "tag")
+        if self.tag and not TAG_RE.match(self.tag):
+            log.error("Invalid Proxmox tag %r (allowed: letters, digits, _ + . -): tagging disabled", self.tag)
+            self.tag = ""
 
     # -- selection -------------------------------------------------------
 
@@ -73,12 +78,10 @@ class Freeprox:
         """Create (or update) the NIC's static lease. Returns (ip, created_by_us)."""
         statics = self.fbx.static_leases()
         existing = next((l for l in statics if l.get("mac", "").upper() == nic.mac), None)
-        template = self.cfg.get("comment", "template")
-        max_len = self.cfg.getint("comment", "max_length")
 
         if existing:
             ip = existing["ip"]
-            comment = render_comment(template, guest, nic, ip, max_len)
+            comment = self._comment(guest, nic, ip)
             if self.cfg.getbool("comment", "update_existing") and existing.get("comment") != comment:
                 log.info("%s %d/%s: existing lease %s -> %s, updating comment",
                          guest.type, guest.vmid, nic.iface, nic.mac, ip)
@@ -89,12 +92,16 @@ class Freeprox:
             return ip, False
 
         ip = self._choose_ip(nic, statics)
-        comment = render_comment(template, guest, nic, ip, max_len)
+        comment = self._comment(guest, nic, ip)
         log.info("%s %d/%s: reserving %s -> %s \"%s\"%s", guest.type, guest.vmid, nic.iface,
                  nic.mac, ip, comment, " (dry-run)" if self.dry_run else "")
         if not self.dry_run:
             self.fbx.add_static_lease(nic.mac, ip, comment)
         return ip, True
+
+    def _comment(self, guest, nic, ip):
+        return render_comment(self.cfg.get("comment", "template"), guest, nic, ip,
+                              self.cfg.getint("comment", "max_length"), hidden_tags=[self.tag] if self.tag else ())
 
     def _choose_ip(self, nic, statics):
         dhcp = self.fbx.dhcp_config()
@@ -132,6 +139,7 @@ class Freeprox:
             return
         entry = self.state.guest(guest.vmid)
         entry.update(type=guest.type, node=guest.node, missing=0)
+        pinned = False
         for nic in self.eligible_nics(guest):
             if nic.mac in entry["nics"] and not force:
                 continue
@@ -140,6 +148,7 @@ class Freeprox:
             except Exception as exc:  # retried on the next pass
                 log.error("%s %d/%s: reservation failed: %s", guest.type, guest.vmid, nic.iface, exc)
                 continue
+            pinned = True
             if self.dry_run:
                 continue
             previous = entry["nics"].get(nic.mac, {})
@@ -148,6 +157,33 @@ class Freeprox:
                 "ip": ip,
                 "created": created or previous.get("created", False),
             }
+        if pinned:
+            self.tag_guest(guest)
+
+    # -- guest tag -------------------------------------------------------
+
+    def tag_guest(self, guest):
+        """Flag the guest with the freeprox tag so the UI shows its IP is pinned."""
+        if not self.tag or guest.has_tag(self.tag):
+            return
+        log.info("%s %d: adding tag '%s'%s", guest.type, guest.vmid, self.tag, " (dry-run)" if self.dry_run else "")
+        if self.dry_run:
+            return
+        try:
+            self.pve.set_tags(guest, guest.tags + [self.tag])
+        except Exception as exc:
+            log.error("%s %d: failed to add tag '%s': %s", guest.type, guest.vmid, self.tag, exc)
+
+    def untag_guest(self, guest):
+        if not self.tag or not guest.has_tag(self.tag):
+            return
+        log.info("%s %d: removing tag '%s'%s", guest.type, guest.vmid, self.tag, " (dry-run)" if self.dry_run else "")
+        if self.dry_run:
+            return
+        try:
+            self.pve.set_tags(guest, [t for t in guest.tags if t.lower() != self.tag.lower()])
+        except Exception as exc:
+            log.error("%s %d: failed to remove tag '%s': %s", guest.type, guest.vmid, self.tag, exc)
 
     def release_guest(self, vmid):
         """Delete the leases freeprox created for this guest."""
@@ -158,7 +194,7 @@ class Freeprox:
         for mac, info in entry.get("nics", {}).items():
             if not info.get("created"):
                 continue
-            log.info("Guest %s destroyed: releasing lease %s (%s)%s", vmid, mac, info.get("ip"),
+            log.info("Guest %s: releasing lease %s (%s)%s", vmid, mac, info.get("ip"),
                      " (dry-run)" if self.dry_run else "")
             if self.dry_run:
                 continue

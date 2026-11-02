@@ -19,6 +19,7 @@ DEFAULTS = {
         "pve_root": "/etc/pve",
         "node": "",
         "bridges": "vmbr0",
+        "tag": "freeprox",
         "skip_templates": "true",
         "process_existing": "false",
     },

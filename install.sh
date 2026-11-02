@@ -144,6 +144,7 @@ installed_version() {
 
 FBX_URL="http://mafreebox.freebox.fr"
 BRIDGES="vmbr0"
+TAG="freeprox"
 POOL_START=""
 POOL_END=""
 REMOVE_ON_DESTROY="false"
@@ -162,6 +163,7 @@ default_settings() {
   echo -e " ${BL}Freebox:${CL}             ${GN}${FBX_URL}${CL}"
   echo -e " ${BL}Watched bridges:${CL}     ${GN}${BRIDGES}${CL}"
   echo -e " ${BL}IP pool:${CL}             ${GN}Freebox DHCP range${CL}"
+  echo -e " ${BL}Proxmox tag:${CL}         ${GN}${TAG}${CL}"
   echo -e " ${BL}Release on destroy:${CL}  ${GN}no${CL}\n"
 }
 
@@ -194,6 +196,13 @@ advanced_settings() {
     whiptail --backtitle "$BACKTITLE" --msgbox "Invalid IP address, please try again." 8 50
   done
 
+  while true; do
+    TAG=$(whiptail --backtitle "$BACKTITLE" --title "PROXMOX TAG" --inputbox \
+      "Tag added to each VM/LXC whose IP has been pinned by freeprox\n(leave empty to disable)" 10 60 "$TAG" 3>&1 1>&2 2>&3) || exit_script
+    [[ -z "$TAG" || "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_+.-]*$ ]] && break
+    whiptail --backtitle "$BACKTITLE" --msgbox "Invalid tag: letters, digits, _ + . - only." 8 50
+  done
+
   if whiptail --backtitle "$BACKTITLE" --title "DESTROY" --defaultno --yesno \
     "Automatically delete the Freebox lease when a VM/LXC is destroyed?" 9 60; then
     REMOVE_ON_DESTROY="true"
@@ -204,6 +213,7 @@ advanced_settings() {
   echo -e " ${BL}Freebox:${CL}             ${GN}${FBX_URL}${CL}"
   echo -e " ${BL}Watched bridges:${CL}     ${GN}${BRIDGES:-all}${CL}"
   echo -e " ${BL}IP pool:${CL}             ${GN}${POOL_START:-DHCP range}${POOL_END:+ - $POOL_END}${CL}"
+  echo -e " ${BL}Proxmox tag:${CL}         ${GN}${TAG:-none}${CL}"
   echo -e " ${BL}Release on destroy:${CL}  ${GN}$([[ $REMOVE_ON_DESTROY == true ]] && echo yes || echo no)${CL}\n"
 
   whiptail --backtitle "$BACKTITLE" --title "CONFIRMATION" --yesno \
@@ -212,7 +222,7 @@ advanced_settings() {
 
 choose_settings() {
   if whiptail --backtitle "$BACKTITLE" --title "SETTINGS" --yes-button "Default" --no-button "Advanced" --yesno \
-    "Use default settings?\n\n  Freebox: ${FBX_URL}\n  Bridge: ${BRIDGES}\n  Pool: Freebox DHCP range\n  Release on destroy: no" 13 62; then
+    "Use default settings?\n\n  Freebox: ${FBX_URL}\n  Bridge: ${BRIDGES}\n  Pool: Freebox DHCP range\n  Proxmox tag: ${TAG}\n  Release on destroy: no" 14 62; then
     default_settings
   else
     header_info
@@ -232,6 +242,7 @@ url = ${FBX_URL}
 
 [proxmox]
 bridges = ${BRIDGES}
+tag = ${TAG}
 
 [dhcp]
 pool_start = ${POOL_START}

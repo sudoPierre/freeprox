@@ -2,7 +2,8 @@
 
 A service for **Proxmox VE** that, as soon as a **VM** or an **LXC container** is created,
 automatically reserves its IP address on the **Freebox** (static DHCP lease through the
-Freebox OS API) and attaches a descriptive comment to it, for example:
+Freebox OS API), attaches a descriptive comment to it, and flags the guest with a
+`freeprox` **tag** in Proxmox. Lease comments look like this:
 
 ```
 192.168.1.42   BC:24:11:5E:0A:31   [PVE] VM 105 web01 | pve/net0 | 4 vCPU, 8 GB, 32 GB | Linux | 2026-11-02
@@ -24,10 +25,13 @@ an already configured guest). freeprox therefore runs as a systemd service that 
      1. the static IP declared inside the guest (LXC `ip=…`, cloud-init `ipconfigN`);
      2. the IP the Freebox DHCP server already gave it;
      3. the first free IP of the pool (not reserved, not leased, not excluded, not answering ping);
-   - the static lease is created with the comment.
-2. **Guest destroyed**: optionally (`remove_on_destroy = true`), the leases freeprox
+   - the static lease is created with the comment;
+   - the guest gets the `freeprox` tag (via `qm set` / `pct set`, existing tags are kept),
+     so the Proxmox UI shows at a glance which guests have a pinned IP.
+2. **`freeprox release <vmid>`**: deletes the leases freeprox created and removes the tag.
+3. **Guest destroyed**: optionally (`remove_on_destroy = true`), the leases freeprox
    created itself are deleted.
-3. **Guest migrated** to another cluster node: the service on that node takes over
+4. **Guest migrated** to another cluster node: the service on that node takes over
    tracking and updates the comment (the lease is tied to the MAC and does not change).
 
 Guests that already exist on first start are skipped (see `freeprox sync --all`).
@@ -45,7 +49,7 @@ The script is fully guided (whiptail dialogs):
 
 1. checks it runs on Proxmox VE and installs missing dependencies;
 2. offers **default** or **advanced** settings (Freebox address, network bridges connected
-   to the LAN, IP pool, lease release on destroy);
+   to the LAN, IP pool, Proxmox tag, lease release on destroy);
 3. installs freeprox into `/opt/freeprox` along with the systemd service;
 4. **pairs freeprox with the Freebox**: approve the request on the box LCD display;
 5. checks the **"Modification des réglages de la Freebox"** (settings modification)
@@ -74,6 +78,7 @@ every option is documented). The most useful ones:
 | Section | Option | Default | Purpose |
 |---|---|---|---|
 | `[proxmox]` | `bridges` | `vmbr0` | bridges connected to the Freebox LAN |
+| `[proxmox]` | `tag` | `freeprox` | tag added to guests with a pinned IP (empty = off) |
 | `[dhcp]` | `pool_start` / `pool_end` | Freebox DHCP range | where static IPs are picked |
 | `[dhcp]` | `exclude` | — | IPs/ranges never to assign |
 | `[comment]` | `template` | see above | comment format |
@@ -82,7 +87,11 @@ every option is documented). The most useful ones:
 
 Comment template variables: `{type}` (`qemu`/`lxc`), `{type_label}` (`VM`/`LXC`),
 `{vmid}`, `{name}`, `{node}`, `{iface}`, `{mac}`, `{bridge}`, `{ip}`, `{cores}`, `{memory}`,
-`{memory_mib}`, `{disk}`, `{ostype}`, `{os}`, `{tags}`, `{date}` (creation date).
+`{memory_mib}`, `{disk}`, `{ostype}`, `{os}`, `{tags}` (without the freeprox tag),
+`{date}` (creation date).
+
+Tip: give the tag a color in *Datacenter → Options → Tag Style Override*, and filter
+on it in the resource tree search.
 
 Tip: keep the static IP pool **outside** the Freebox dynamic DHCP range
 (e.g. shrink the DHCP range to `.10-.99` and set `pool_start = 192.168.1.100`,
@@ -98,7 +107,7 @@ freeprox sync [-n]             run a single pass
 freeprox sync --all [-n]       also reserve IPs for existing guests
 freeprox sync --vmid 105       (re)process a specific guest
 freeprox leases [--mine]       list static leases
-freeprox release 105 [...]     delete the leases created for a guest
+freeprox release 105 [...]     delete the leases created for a guest and remove its tag
 ```
 
 ## Notes

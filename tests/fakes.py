@@ -109,6 +109,7 @@ class FakePve:
         self.root = root
         self.node = node
         self.ids = {}
+        self.calls = []
         os.makedirs(os.path.join(root, "nodes", node, "qemu-server"), exist_ok=True)
         os.makedirs(os.path.join(root, "nodes", node, "lxc"), exist_ok=True)
         os.symlink(os.path.join("nodes", node), os.path.join(root, "local"))
@@ -129,6 +130,34 @@ class FakePve:
         os.utime(path, (mtime, mtime))
         self.ids[str(vmid)] = {"node": node, "type": guest_type, "version": 1}
         self._write_vmlist()
+
+    def run(self, args):
+        """Fake qm/pct: only 'set <vmid> --tags <tags>' and 'set <vmid> --delete tags'."""
+        tool, action, vmid = args[:3]
+        info = self.ids[vmid]
+        assert (tool, info["type"]) in (("qm", "qemu"), ("pct", "lxc")) and action == "set", args
+        folder = "qemu-server" if info["type"] == "qemu" else "lxc"
+        path = os.path.join(self.root, "nodes", info["node"], folder, "%s.conf" % vmid)
+        with open(path) as fh:
+            lines = [l for l in fh.read().splitlines() if not l.startswith("tags:")]
+        if args[3:] == ["--delete", "tags"]:
+            pass
+        elif args[3] == "--tags":
+            lines.insert(0, "tags: " + args[4])
+        else:
+            raise AssertionError(args)
+        with open(path, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        self.calls.append(args)
+
+    def tags(self, vmid):
+        info = self.ids[str(vmid)]
+        folder = "qemu-server" if info["type"] == "qemu" else "lxc"
+        with open(os.path.join(self.root, "nodes", info["node"], folder, "%d.conf" % vmid)) as fh:
+            for line in fh:
+                if line.startswith("tags:"):
+                    return line.split(":", 1)[1].strip()
+        return None
 
     def remove(self, vmid):
         info = self.ids.pop(str(vmid))

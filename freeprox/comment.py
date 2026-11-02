@@ -43,13 +43,14 @@ def _creation_time(guest):
         return time.time()
 
 
-def guest_context(guest, nic, ip=""):
+def guest_context(guest, nic, ip="", hidden_tags=()):
     cfg = guest.config
     cores = int(cfg.get("cores", "1") or 1)
     if guest.type == "qemu":
         cores *= int(cfg.get("sockets", "1") or 1)
     memory = int(cfg.get("memory", "2048" if guest.type == "qemu" else "512") or 0)
     ostype = cfg.get("ostype", "")
+    hidden = {t.lower() for t in hidden_tags}
     return _SafeDict(
         type=guest.type,
         type_label="VM" if guest.type == "qemu" else "LXC",
@@ -66,13 +67,13 @@ def guest_context(guest, nic, ip=""):
         disk=_human_gib(disk_size_gib(guest.type, cfg)),
         ostype=ostype or "?",
         os=OS_LABELS.get(ostype, ostype.capitalize() or "?"),
-        tags=cfg.get("tags", "").replace(";", ",") or "-",
+        tags=",".join(t for t in guest.tags if t.lower() not in hidden) or "-",
         date=time.strftime("%Y-%m-%d", time.localtime(_creation_time(guest))),
     )
 
 
-def render_comment(template, guest, nic, ip="", max_length=255):
-    text = template.format_map(guest_context(guest, nic, ip))
+def render_comment(template, guest, nic, ip="", max_length=255, hidden_tags=()):
+    text = template.format_map(guest_context(guest, nic, ip, hidden_tags))
     text = re.sub(r"\s+", " ", text).strip()
     if max_length and len(text) > max_length:
         text = text[: max_length - 3].rstrip() + "..."

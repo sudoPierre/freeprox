@@ -4,8 +4,10 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 from freeprox import APP_ID
+from freeprox.cli import main
 from freeprox.config import Config
 from freeprox.freebox import FreeboxClient
 from freeprox.proxmox import ProxmoxHost
@@ -51,7 +53,7 @@ class Scenario(unittest.TestCase):
     def service(self):
         cfg = Config(self.conf)
         client = FreeboxClient(cfg.get("freebox", "url"), APP_ID, cfg.read_token())
-        host = ProxmoxHost(cfg.get("proxmox", "pve_root"))
+        host = ProxmoxHost(cfg.get("proxmox", "pve_root"), runner=self.pve.run)
         return Freeprox(cfg, client, host, State(cfg.get("daemon", "state_file")), pinger=lambda ip: False)
 
     def test_existing_guests_ignored_new_ones_reserved(self):
@@ -127,6 +129,57 @@ class Scenario(unittest.TestCase):
         self.fbx.settings_permission = True
         self.service().run_once()
         self.assertIn("BC:24:11:00:01:09", self.fbx.static)
+
+    def test_guest_tagged_once_ip_pinned(self):
+        self.pve.add(100, "qemu", VM.format(id=100, mac="BC:24:11:00:01:00"))
+        self.service().run_once()  # existing guest: neither reserved nor tagged
+        self.assertIsNone(self.pve.tags(100))
+
+        self.pve.add(110, "qemu", "tags: prod;web\n" + VM.format(id=110, mac="BC:24:11:00:01:10"))
+        self.pve.add(210, "lxc", CT.format(id=210, mac="BC:24:11:00:02:10", ip="dhcp"))
+        self.service().run_once()
+        self.assertEqual(self.pve.tags(110), "prod;web;freeprox")  # existing tags preserved
+        self.assertEqual(self.pve.tags(210), "freeprox")
+        self.assertEqual([c[0] for c in self.pve.calls], ["qm", "pct"])
+        self.pve.calls.clear()
+        self.service().run_once()
+        self.assertEqual(self.pve.calls, [])  # already tagged: no new qm/pct call
+
+    def test_comment_tags_exclude_freeprox_tag(self):
+        self.write_conf(comment__template="{name} [{tags}]")
+        self.service().run_once()
+        self.pve.add(111, "qemu", "tags: freeprox;prod\n" + VM.format(id=111, mac="BC:24:11:00:01:11"))
+        self.service().run_once()
+        self.assertEqual(self.fbx.static["BC:24:11:00:01:11"]["comment"], "web01 [prod]")
+        self.assertEqual(self.pve.calls, [])  # tag already present
+
+    def test_tag_disabled_or_failing(self):
+        self.write_conf(proxmox__tag="")
+        self.service().run_once()
+        self.pve.add(112, "qemu", VM.format(id=112, mac="BC:24:11:00:01:12"))
+        self.service().run_once()
+        self.assertIn("BC:24:11:00:01:12", self.fbx.static)
+        self.assertIsNone(self.pve.tags(112))
+
+        # A failing qm call is logged but does not prevent the reservation.
+        self.write_conf()
+        self.pve.add(113, "qemu", VM.format(id=113, mac="BC:24:11:00:01:13"))
+        svc = self.service()
+        svc.pve.runner = lambda args: (_ for _ in ()).throw(RuntimeError("guest locked"))
+        with self.assertLogs("freeprox.service", "ERROR"):
+            svc.run_once()
+        self.assertIn("BC:24:11:00:01:13", self.fbx.static)
+
+    def test_release_command_removes_lease_and_tag(self):
+        self.service().run_once()
+        self.pve.add(114, "lxc", "tags: dns\n" + CT.format(id=114, mac="BC:24:11:00:01:14", ip="dhcp"))
+        self.service().run_once()
+        self.assertEqual(self.pve.tags(114), "dns;freeprox")
+        with unittest.mock.patch("freeprox.cli.ProxmoxHost",
+                                 lambda root, node=None: ProxmoxHost(root, node, runner=self.pve.run)):
+            self.assertEqual(main(["-c", self.conf, "release", "114"]), 0)
+        self.assertNotIn("BC:24:11:00:01:14", self.fbx.static)
+        self.assertEqual(self.pve.tags(114), "dns")
 
 
 if __name__ == "__main__":

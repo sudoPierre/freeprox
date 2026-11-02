@@ -70,7 +70,8 @@ def cmd_check(cfg, args):
         "enabled" if dhcp.get("enabled") else "DISABLED", dhcp.get("gateway"), dhcp.get("netmask"),
         dhcp.get("ip_range_start"), dhcp.get("ip_range_end")))
     print("Static leases : %d" % len(fbx.static_leases()))
-    print("Proxmox node  : %s (watched bridges: %s)" % (pve.node, cfg.get("proxmox", "bridges") or "all"))
+    print("Proxmox node  : %s (watched bridges: %s, tag: %s)" % (
+        pve.node, cfg.get("proxmox", "bridges") or "all", cfg.get("proxmox", "tag") or "none"))
     fbx.logout()
     return 0 if ok else 2
 
@@ -110,9 +111,12 @@ def cmd_leases(cfg, args):
 
 def cmd_release(cfg, args):
     svc = make_service(cfg, args)
+    guests = {g.vmid: g for g in svc.pve.local_guests()}
     for vmid in args.vmid:
         count = svc.release_guest(vmid)
         print("Guest %d: %d lease(s) deleted" % (vmid, count))
+        if vmid in guests:
+            svc.untag_guest(guests[vmid])
         if not svc.dry_run:
             svc.state.guests.pop(str(vmid), None)
     if not svc.dry_run:
