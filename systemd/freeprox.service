@@ -1,0 +1,16 @@
+[Unit]
+Description=Freeprox - réservation IP Freebox pour les VM/LXC Proxmox
+After=pve-cluster.service network-online.target
+Wants=network-online.target
+Requires=pve-cluster.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/freeprox daemon
+Restart=on-failure
+RestartSec=10
+StateDirectory=freeprox
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

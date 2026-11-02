@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lanceur installé dans /usr/local/bin/freeprox
+FREEPROX_HOME="${FREEPROX_HOME:-/opt/freeprox}"
+PYTHONPATH="$FREEPROX_HOME${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m freeprox "$@"
