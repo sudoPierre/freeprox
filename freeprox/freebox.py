@@ -81,7 +81,8 @@ class FreeboxClient:
             if auth and _retry and code in SESSION_ERRORS:
                 self._session = None
                 return self.call(method, path, body, auth, _retry=False)
-            raise FreeboxError(resp.get("msg") or code or "unknown error", code)
+            message = resp.get("msg") or "unknown error"
+            raise FreeboxError("%s [%s %s, error_code=%s]" % (message, method, path, code), code)
         return resp.get("result")
 
     # -- authentication --------------------------------------------------
