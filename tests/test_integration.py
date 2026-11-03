@@ -67,7 +67,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(sorted(self.fbx.static), ["BC:24:11:00:01:01", "BC:24:11:00:02:00"])
         vm = self.fbx.static["BC:24:11:00:01:01"]
         self.assertEqual(vm["ip"], "192.168.1.10")
-        self.assertTrue(vm["comment"].startswith("[PVE] VM 101 web01 | pve/net0 | 2 vCPU, 2 GB, 20 GB | Linux |"))
+        self.assertTrue(vm["comment"].startswith("[PVE] VM 101 web01 | pve | 2vCPU 2GB 20GB"))
         self.assertEqual(self.fbx.static["BC:24:11:00:02:00"]["ip"], "192.168.1.77")  # CT static IP reused
 
         # A second pass creates nothing new.

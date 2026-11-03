@@ -5,7 +5,8 @@ import os
 
 DEFAULT_PATH = "/etc/freeprox/freeprox.conf"
 
-DEFAULT_TEMPLATE = "[PVE] {type_label} {vmid} {name} | {node}/{iface} | {cores} vCPU, {memory}, {disk} | {os} | {date}"
+# The Freebox rejects static lease comments longer than 63 bytes (UTF-8), see comment.py.
+DEFAULT_TEMPLATE = "[PVE] {type_label} {vmid} {name} | {node} | {cores}vCPU {memory} {disk}"
 
 DEFAULTS = {
     "freebox": {
@@ -33,7 +34,7 @@ DEFAULTS = {
     },
     "comment": {
         "template": DEFAULT_TEMPLATE,
-        "max_length": "255",
+        "max_length": "63",
         "update_existing": "true",
     },
     "daemon": {

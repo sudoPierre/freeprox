@@ -66,13 +66,27 @@ class Comment(unittest.TestCase):
         cfg = parse_config(QEMU_CONF)
         guest = Guest(105, "qemu", "pve", cfg, nics=parse_nics("qemu", cfg))
         text = render_comment(DEFAULT_TEMPLATE, guest, guest.nics[0], "192.168.1.42")
-        self.assertTrue(text.startswith("[PVE] VM 105 web01 | pve/net0 | 4 vCPU, 4 GB, 32 GB | Linux | 2024-10-"))
+        self.assertEqual(text, "[PVE] VM 105 web01 | pve | 4vCPU 4GB 32GB")
 
     def test_unknown_key_and_truncation(self):
         cfg = parse_config(LXC_CONF)
         guest = Guest(200, "lxc", "pve", cfg, nics=parse_nics("lxc", cfg))
         self.assertEqual(render_comment("{name} {nope}", guest, guest.nics[0]), "dns01 ?")
         self.assertEqual(render_comment("x" * 50, guest, guest.nics[0], max_length=10), "xxxxxxx...")
+
+    def test_freebox_byte_limit(self):
+        cfg = parse_config(LXC_CONF)
+        guest = Guest(200, "lxc", "pve", cfg, nics=parse_nics("lxc", cfg))
+        self.assertEqual(render_comment("x" * 63, guest, guest.nics[0], max_length=255), "x" * 63)
+        self.assertEqual(render_comment("x" * 64, guest, guest.nics[0], max_length=255), "x" * 60 + "...")
+        accented = render_comment("é" * 40, guest, guest.nics[0])
+        self.assertLessEqual(len(accented.encode("utf-8")), 63)
+        self.assertEqual(accented, "é" * 30 + "...")  # never cuts a multi-byte character in half
+        # Real case refused by the Freebox on 2026-11-03 with the old 86-character template.
+        cfg = parse_config(LXC_CONF.replace("dns01", "espconnect"))
+        guest = Guest(112, "lxc", "pve-hydra", cfg, nics=parse_nics("lxc", cfg))
+        text = render_comment(DEFAULT_TEMPLATE, guest, guest.nics[0])
+        self.assertEqual(text, "[PVE] LXC 112 espconnect | pve-hydra | 1vCPU 512MB 8.5GB")
 
 
 class Allocator(unittest.TestCase):

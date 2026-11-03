@@ -5,6 +5,10 @@ import time
 
 from .proxmox import disk_size_gib, parse_props
 
+# Longest comment the Freebox accepts, in UTF-8 bytes (measured on Freebox OS:
+# 64 bytes are refused with error_code=internal).
+FREEBOX_COMMENT_MAX_BYTES = 63
+
 OS_LABELS = {
     "l26": "Linux", "l24": "Linux 2.4", "other": "Other", "solaris": "Solaris",
     "wxp": "Windows XP", "w2k": "Windows 2000", "w2k3": "Windows 2003", "w2k8": "Windows 2008",
@@ -20,18 +24,18 @@ class _SafeDict(dict):
 
 def _human_mib(mib):
     if mib >= 1024 and mib % 1024 == 0:
-        return "%d GB" % (mib // 1024)
+        return "%dGB" % (mib // 1024)
     if mib >= 1024:
-        return "%.1f GB" % (mib / 1024)
-    return "%d MB" % mib
+        return "%.1fGB" % (mib / 1024)
+    return "%dMB" % mib
 
 
 def _human_gib(gib):
     if gib <= 0:
         return "?"
     if gib >= 1024:
-        return "%.1f TB" % (gib / 1024)
-    return ("%d GB" % gib) if gib == int(gib) else ("%.1f GB" % gib)
+        return "%.1fTB" % (gib / 1024)
+    return ("%dGB" % gib) if gib == int(gib) else ("%.1fGB" % gib)
 
 
 def _creation_time(guest):
@@ -72,9 +76,12 @@ def guest_context(guest, nic, ip="", hidden_tags=()):
     )
 
 
-def render_comment(template, guest, nic, ip="", max_length=255, hidden_tags=()):
+def render_comment(template, guest, nic, ip="", max_length=FREEBOX_COMMENT_MAX_BYTES, hidden_tags=()):
+    """Render the template, truncated to max_length UTF-8 bytes (never above the Freebox limit)."""
     text = template.format_map(guest_context(guest, nic, ip, hidden_tags))
     text = re.sub(r"\s+", " ", text).strip()
-    if max_length and len(text) > max_length:
-        text = text[: max_length - 3].rstrip() + "..."
+    limit = min(max_length or FREEBOX_COMMENT_MAX_BYTES, FREEBOX_COMMENT_MAX_BYTES)
+    if len(text.encode("utf-8")) > limit:
+        cut = text.encode("utf-8")[: limit - 3].decode("utf-8", "ignore")
+        text = cut.rstrip() + "..."
     return text

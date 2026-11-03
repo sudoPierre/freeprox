@@ -6,8 +6,8 @@ Freebox OS API), attaches a descriptive comment to it, and flags the guest with 
 `freeprox` **tag** in Proxmox. Lease comments look like this:
 
 ```
-192.168.1.42   BC:24:11:5E:0A:31   [PVE] VM 105 web01 | pve/net0 | 4 vCPU, 8 GB, 32 GB | Linux | 2026-11-02
-192.168.1.43   BC:24:11:9C:44:02   [PVE] LXC 210 dns01 | pve/net0 | 1 vCPU, 512 MB, 8 GB | Debian | 2026-11-02
+192.168.1.42   BC:24:11:5E:0A:31   [PVE] VM 105 web01 | pve | 4vCPU 8GB 32GB
+192.168.1.43   BC:24:11:9C:44:02   [PVE] LXC 210 dns01 | pve | 1vCPU 512MB 8GB
 ```
 
 No dependencies: Python 3 standard library only, already available on Proxmox.
@@ -89,6 +89,9 @@ Comment template variables: `{type}` (`qemu`/`lxc`), `{type_label}` (`VM`/`LXC`)
 `{vmid}`, `{name}`, `{node}`, `{iface}`, `{mac}`, `{bridge}`, `{ip}`, `{cores}`, `{memory}`,
 `{memory_mib}`, `{disk}`, `{ostype}`, `{os}`, `{tags}` (without the freeprox tag),
 `{date}` (creation date).
+
+The Freebox refuses lease comments longer than **63 bytes** (UTF-8: accented letters
+count double). freeprox truncates longer comments with `...`, so keep custom templates short.
 
 Tip: give the tag a color in *Datacenter → Options → Tag Style Override*, and filter
 on it in the resource tree search.

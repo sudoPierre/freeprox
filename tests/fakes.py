@@ -66,6 +66,10 @@ class FakeFreebox:
                     if not fake.settings_permission:
                         return self._send({"success": False, "error_code": "insufficient_rights"}, 403)
                     body = self._body()
+                    # Real Freebox behaviour: comments over 63 UTF-8 bytes are refused.
+                    if len(body.get("comment", "").encode("utf-8")) > 63:
+                        return self._send({"success": False, "error_code": "internal",
+                                           "msg": "Impossible d’ajouter ce bail statique"})
                     if any(l["ip"] == body["ip"] for l in fake.static.values()):
                         return self._send({"success": False, "error_code": "alloc_failed"})
                     lease = {"id": body["mac"], "mac": body["mac"], "ip": body["ip"], "comment": body.get("comment", "")}
