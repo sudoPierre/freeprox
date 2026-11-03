@@ -22,7 +22,7 @@ CL=$'\033[m'; BFR=$'\r\033[K'; HOLD=" "; CM="${GN}✓${CL}"; CROSS="${RD}✗${CL
 SPINNER_PID=""
 
 header_info() {
-  clear
+  clear 2>/dev/null || true
   cat <<"EOF"
     ____
    / __/_______  ___  ____  _________  _  __
@@ -69,7 +69,7 @@ on_error() {
 trap 'on_error $LINENO' ERR
 trap 'stop_spinner' EXIT
 
-exit_script() { stop_spinner; clear; echo -e "${CROSS} ${RD}Aborted.${CL}\n"; exit 0; }
+exit_script() { stop_spinner; clear 2>/dev/null || true; echo -e "${CROSS} ${RD}Aborted.${CL}\n"; exit 0; }
 
 # -- checks ------------------------------------------------------------------
 
