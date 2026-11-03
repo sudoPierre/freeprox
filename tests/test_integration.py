@@ -84,6 +84,16 @@ class Scenario(unittest.TestCase):
         self.assertEqual(self.fbx.static["BC:24:11:00:01:02"]["ip"], "192.168.1.33")
         self.assertEqual(self.fbx.static["BC:24:11:00:01:03"]["ip"], "192.168.1.11")
 
+    def test_current_ip_from_lan_browser_when_no_dynamic_lease(self):
+        # Real case (2026-11-03): the dynamic lease vanished but the guest still used .24.
+        self.service().run_once()
+        self.fbx.hosts = {"BC:24:11:00:01:24": ["192.168.1.24"]}
+        self.pve.add(124, "lxc", CT.format(id=124, mac="BC:24:11:00:01:24", ip="dhcp"))
+        self.pve.add(125, "lxc", CT.format(id=125, mac="BC:24:11:00:01:25", ip="dhcp"))  # unknown host
+        self.service().run_once()
+        self.assertEqual(self.fbx.static["BC:24:11:00:01:24"]["ip"], "192.168.1.24")
+        self.assertEqual(self.fbx.static["BC:24:11:00:01:25"]["ip"], "192.168.1.10")
+
     def test_other_bridges_templates_and_locks_skipped(self):
         self.service().run_once()
         self.pve.add(104, "qemu", VM.format(id=104, mac="BC:24:11:00:01:04").replace("vmbr0", "vmbr9"))

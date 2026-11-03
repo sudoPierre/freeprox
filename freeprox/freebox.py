@@ -129,6 +129,15 @@ class FreeboxClient:
     def dynamic_leases(self):
         return self.call("GET", "dhcp/dynamic_lease/") or []
 
+    def lan_host(self, mac, interface="pub"):
+        """Host seen by the Freebox network browser for this MAC, or None."""
+        try:
+            return self.call("GET", "lan/browser/%s/ether-%s" % (interface, mac.lower()))
+        except FreeboxError as exc:
+            if exc.code in ("noent", "nodev"):
+                return None
+            raise
+
     def add_static_lease(self, mac, ip, comment=""):
         return self.call("POST", "dhcp/static_lease/", {"mac": mac, "ip": ip, "comment": comment})
 

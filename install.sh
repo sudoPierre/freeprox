@@ -106,9 +106,14 @@ is_installed() { [[ -d "$PREFIX/freeprox" ]]; }
 
 SRC=""
 fetch_source() {
-  local here
-  here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-  if [[ -n "$here" && -f "$here/freeprox/__init__.py" && -z "${FREEPROX_FORCE_DOWNLOAD:-}" ]]; then
+  local here=""
+  # Use local sources only when run from a git clone: never when piped through
+  # bash -c (no script file) nor from the installed copy (it would delete itself).
+  if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  fi
+  if [[ -n "$here" && "$here" != "$(cd "$PREFIX" 2>/dev/null && pwd -P)" \
+        && -f "$here/freeprox/__init__.py" && -z "${FREEPROX_FORCE_DOWNLOAD:-}" ]]; then
     SRC="$here"
     msg_ok "Using local sources (${SRC})"
     return

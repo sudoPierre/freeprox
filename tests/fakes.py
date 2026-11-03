@@ -16,6 +16,7 @@ class FakeFreebox:
     def __init__(self, settings_permission=True):
         self.static = {}
         self.dynamic = []
+        self.hosts = {}  # mac -> [ipv4] seen by the LAN browser
         self.settings_permission = settings_permission
         self.dhcp = {"enabled": True, "gateway": "192.168.1.254", "netmask": "255.255.255.0",
                      "ip_range_start": "192.168.1.10", "ip_range_end": "192.168.1.50"}
@@ -56,6 +57,12 @@ class FakeFreebox:
                     return self._send({"success": True})
                 if self.headers.get("X-Fbx-App-Auth") != SESSION:
                     return self._send({"success": False, "error_code": "auth_required"}, 403)
+                if path.startswith("lan/browser/pub/ether-"):
+                    mac = path[len("lan/browser/pub/ether-"):].upper()
+                    if mac not in fake.hosts:
+                        return self._send({"success": False, "error_code": "noent"}, 404)
+                    conns = [{"addr": ip, "af": "ipv4", "active": True, "reachable": True} for ip in fake.hosts[mac]]
+                    return self._send({"success": True, "result": {"id": "ether-" + mac.lower(), "l3connectivities": conns}})
                 if path == "dhcp/config/":
                     return self._send({"success": True, "result": fake.dhcp})
                 if path == "dhcp/dynamic_lease/":

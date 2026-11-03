@@ -103,6 +103,21 @@ class Freeprox:
         return render_comment(self.cfg.get("comment", "template"), guest, nic, ip,
                               self.cfg.getint("comment", "max_length"), hidden_tags=[self.tag] if self.tag else ())
 
+    def _current_ips(self, nic, dynamic):
+        """Dynamic lease first, then the Freebox network browser (still knows the guest's IP
+        when the dynamic lease list was emptied, e.g. after a static lease was deleted)."""
+        for lease in dynamic:
+            if lease.get("mac", "").upper() == nic.mac:
+                yield lease["ip"]
+        try:
+            host = self.fbx.lan_host(nic.mac)
+        except Exception as exc:
+            log.debug("LAN browser lookup failed for %s: %s", nic.mac, exc)
+            return
+        for conn in (host or {}).get("l3connectivities", []):
+            if conn.get("af") == "ipv4" and conn.get("active") and conn.get("reachable"):
+                yield conn["addr"]
+
     def _choose_ip(self, nic, statics):
         dhcp = self.fbx.dhcp_config()
         network = lan_network(dhcp)
@@ -115,11 +130,11 @@ class Freeprox:
                 return nic.static_ip
             log.warning("Static IP %s of %s unusable (outside LAN %s or already reserved)", nic.static_ip, nic.mac, network)
 
-        # 2. IP currently leased by DHCP to this MAC: pin it.
+        # 2. IP currently used by this MAC: pin it.
         if self.cfg.getbool("dhcp", "prefer_current_ip"):
-            current = next((l["ip"] for l in dynamic if l.get("mac", "").upper() == nic.mac), None)
-            if current and current not in reserved and _in_network(current, network):
-                return current
+            for current in self._current_ips(nic, dynamic):
+                if current not in reserved and _in_network(current, network):
+                    return current
 
         # 3. First free IP in the pool.
         used = reserved | {l["ip"] for l in dynamic if l.get("mac", "").upper() != nic.mac}
